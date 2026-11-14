@@ -1,0 +1,14 @@
+# Local-only config
+app/.env
+deploy/.env.prod
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Local publish dry-run output and dev media you drop in by hand
+publish-out/
+dev/media/videos/
+
+HANDOFF.md

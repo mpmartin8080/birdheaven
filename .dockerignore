@@ -1,0 +1,12 @@
+# Build context is the repo root; the image needs app/ and webroot/ only.
+.git
+**/__pycache__
+*.pyc
+.venv
+*.env
+.env*
+deploy
+tools
+dev
+publish-out
+*.md

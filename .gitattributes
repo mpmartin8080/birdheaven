@@ -1,0 +1,5 @@
+# Uploaded byte-for-byte to the Linux droplet (deploy/ssh.py upload_file): keep LF.
+deploy/caddy/Caddyfile text eol=lf
+*.sh text eol=lf
+# cmd.exe launchers
+*.bat text eol=crlf

@@ -1,0 +1,27 @@
+# Local development, in the same shape it runs on the droplet (minus Caddy):
+#
+#     cd app
+#     docker compose up --build
+#     open http://localhost:8000
+#
+# With no CATALOG_URL, the service reads ../dev/catalog.json -- but that path
+# is outside the image, so this file mounts dev/ in for local use. To try the
+# real bucket locally, set CATALOG_URL in app/.env.
+
+name: birdheaven
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: app/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CATALOG_URL: ${CATALOG_URL:-/srv/dev/catalog.json}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../dev:/srv/dev:ro

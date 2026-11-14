@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "updated": "2026-11-14T08:00:00-05:00",
+  "videos": [
+    {
+      "slug": "2026-11-14-cardinal-pair",
+      "title": "Cardinal pair at the platform feeder",
+      "description": "The male hands off a sunflower seed \u2014 classic courtship feeding, a few months early.",
+      "species": [
+        "Northern Cardinal"
+      ],
+      "recorded": "2026-11-14T06:00:00-05:00",
+      "duration": 48.2,
+      "video": "videos/2026-11-14-cardinal-pair.mp4",
+      "poster": "posters/2026-11-14-cardinal-pair.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": true
+    },
+    {
+      "slug": "2026-11-14-chickadee-relay",
+      "title": "Chickadee relay: one seed per trip",
+      "description": "Grab, fly to the maple, hammer it open, come back. Eleven times in a minute.",
+      "species": [
+        "Black-capped Chickadee"
+      ],
+      "recorded": "2026-11-14T03:00:00-05:00",
+      "duration": 63.0,
+      "video": "videos/2026-11-14-chickadee-relay.mp4",
+      "poster": "posters/2026-11-14-chickadee-relay.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    },
+    {
+      "slug": "2026-11-13-goldfinch-flock",
+      "title": "Goldfinches on the thistle sock",
+      "description": "Winter plumage already \u2014 more olive than gold.",
+      "species": [
+        "American Goldfinch",
+        "House Finch"
+      ],
+      "recorded": "2026-11-13T12:00:00-05:00",
+      "duration": 91.5,
+      "video": "videos/2026-11-13-goldfinch-flock.mp4",
+      "poster": "posters/2026-11-13-goldfinch-flock.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    },
+    {
+      "slug": "2026-11-13-blue-jay-arrival",
+      "title": "A blue jay clears the feeder",
+      "description": "Everyone else has somewhere else to be.",
+      "species": [
+        "Blue Jay",
+        "Mourning Dove"
+      ],
+      "recorded": "2026-11-13T04:00:00-05:00",
+      "duration": 27.4,
+      "video": "videos/2026-11-13-blue-jay-arrival.mp4",
+      "poster": "posters/2026-11-13-blue-jay-arrival.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    },
+    {
+      "slug": "2026-11-12-woodpecker-suet",
+      "title": "Downy woodpecker on the suet cage",
+      "description": "Upside down, as usual.",
+      "species": [
+        "Downy Woodpecker"
+      ],
+      "recorded": "2026-11-12T06:00:00-05:00",
+      "duration": 74.0,
+      "video": "videos/2026-11-12-woodpecker-suet.mp4",
+      "poster": "posters/2026-11-12-woodpecker-suet.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    },
+    {
+      "slug": "2026-11-11-nuthatch-headfirst",
+      "title": "Nuthatch, headfirst down the post",
+      "description": "",
+      "species": [
+        "White-breasted Nuthatch",
+        "Tufted Titmouse"
+      ],
+      "recorded": "2026-11-11T05:00:00-05:00",
+      "duration": 39.9,
+      "video": "videos/2026-11-11-nuthatch-headfirst.mp4",
+      "poster": "posters/2026-11-11-nuthatch-headfirst.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    },
+    {
+      "slug": "2026-11-10-squirrel-attempt",
+      "title": "Squirrel vs. the baffle, round 14",
+      "description": "The baffle remains undefeated.",
+      "species": [
+        "Eastern Gray Squirrel"
+      ],
+      "recorded": "2026-11-10T04:00:00-05:00",
+      "duration": 112.0,
+      "video": "videos/2026-11-10-squirrel-attempt.mp4",
+      "poster": "posters/2026-11-10-squirrel-attempt.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    },
+    {
+      "slug": "2026-11-08-junco-snow",
+      "title": "Juncos in the first snow",
+      "description": "Ground feeders, sweeping up what the others drop.",
+      "species": [
+        "Dark-eyed Junco",
+        "Northern Cardinal"
+      ],
+      "recorded": "2026-11-08T12:00:00-05:00",
+      "duration": 55.0,
+      "video": "videos/2026-11-08-junco-snow.mp4",
+      "poster": "posters/2026-11-08-junco-snow.svg",
+      "width": 1920,
+      "height": 1080,
+      "featured": false
+    }
+  ],
+  "_comment": "Local-development sample. Posters are generated SVGs in dev/media/posters; the .mp4 files do not exist, so clicking a card shows the viewer's error state. Drop any MP4 at dev/media/videos/<slug>.mp4 to see playback."
+}

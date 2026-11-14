@@ -1,0 +1,9 @@
+# Deliberately short, like financesite's: every line is a wheel to build, scan
+# and patch. The catalog is fetched with the standard library's urllib, so no
+# HTTP client is needed at runtime.
+#
+# Before the first real deploy, generate a hashed lockfile:
+#     pip-compile --generate-hashes app/requirements.txt
+
+fastapi>=0.115,<1.0
+uvicorn>=0.30,<1.0          # plain, not [standard]: no uvloop/httptools to build

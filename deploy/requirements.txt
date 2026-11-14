@@ -1,0 +1,3 @@
+# The deploy CLI itself uses only the standard library (plus `docker`, `ssh`
+# and optionally `doctl` / `op` on PATH). tools/publish.py needs boto3 -- see
+# tools/requirements.txt.

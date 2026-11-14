@@ -1,0 +1,35 @@
+# TLS termination for Bird Heaven. Same structure as financesite's Caddyfile
+# (read its header for the full story on the port variables and PORT80_MODE),
+# minus the Plaid webhook port.
+#
+#   redirect     -- :80 only 301s to HTTPS. The permanent setting.
+#   passthrough  -- :80 serves the site in plain HTTP. Bring-up only, before
+#                   DNS and the certificate work. ACME keeps working either way.
+
+{
+	admin off
+}
+
+(redirect) {
+	redir https://{$SITE_DOMAIN}{$HTTPS_PORT_SUFFIX}{uri} permanent
+}
+
+(passthrough) {
+	reverse_proxy web:8000
+}
+
+http://{$SITE_DOMAIN} {
+	import {$PORT80_MODE}
+}
+
+{$SITE_DOMAIN}:{$HTTPS_PORT} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+
+	# FUTURE live stream route, once a streaming server exists, e.g.:
+	#   handle_path /live/* {
+	#       reverse_proxy mediamtx:8888
+	#   }
+
+	reverse_proxy web:8000
+}

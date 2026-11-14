@@ -1,0 +1,63 @@
+# Overlaid on app/compose.yaml for the droplet by deploy/compose_ops.py:
+#
+#     docker compose -f app/compose.yaml -f deploy/compose.prod.yaml -p birdheaven up -d
+#
+# with every ${VAR} below already in the process environment (from
+# deploy/.env.prod via deploy/envfile.py, and from deploy/config.py).
+#
+# What changes from local dev:
+#   * `image:` not `build:`, with `pull_policy: never` -- deploy/build.py has
+#     already built the image on this droplet's own daemon. There is no
+#     registry to pull from; a missing tag is an error, never a download.
+#   * No dev/ mount and no published port on `web`; only Caddy is published.
+#   * Site settings (catalog, media origin, PayPal, live stub) come from
+#     deploy/.env.prod. None of them is a secret.
+#
+# FUTURE: when a live streaming server is chosen, it goes here as another
+# service (e.g. bluenviron/mediamtx), with its ingest port published and its
+# HLS/WebRTC port reached only through Caddy. See ARCHITECTURE.md, "Live video".
+
+services:
+  web:
+    build: !reset null
+    image: ${BIRD_IMAGE:-birdheaven-web}:${IMAGE_TAG:-latest}
+    pull_policy: never
+    restart: unless-stopped
+    ports: !reset null
+    volumes: !reset null
+    env_file: !reset null
+    environment:
+      CATALOG_URL: ${CATALOG_URL:-}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-}
+      SITE_NAME: ${SITE_NAME:-Bird Heaven}
+      SITE_TAGLINE: ${SITE_TAGLINE:-Live from the backyard feeders}
+      LOCATION_LABEL: ${LOCATION_LABEL:-}
+      PAYPAL_HOSTED_BUTTON_ID: ${PAYPAL_HOSTED_BUTTON_ID:-}
+      LIVE_STATUS: ${LIVE_STATUS:-offline}
+      LIVE_KIND: ${LIVE_KIND:-}
+      LIVE_URL: ${LIVE_URL:-}
+      LIVE_TITLE: ${LIVE_TITLE:-Feeder cam}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+  caddy:
+    # Same pinned image as financesite.
+    image: caddy:2.9.1@sha256:748016f285ed8c43a9ce6e3aed6d92d3009d90ca41157950880f40beaf3ff62b
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      SITE_DOMAIN: ${BIRD_SITE_DOMAIN}
+      HTTPS_PORT: ${BIRD_HTTPS_PORT}
+      HTTPS_PORT_SUFFIX: ${BIRD_HTTPS_PORT_SUFFIX:-}
+      PORT80_MODE: ${BIRD_PORT80_MODE}
+    ports:
+      - "80:80"
+      - "${BIRD_HTTPS_PORT}:${BIRD_HTTPS_PORT}"
+    volumes:
+      - ${BIRD_CADDYFILE:-./caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  # ACME account key and certificates. A named volume rather than a bind mount
+  # on a DO Volume: losing it costs one certificate re-issue, nothing more.
+  caddy-data:

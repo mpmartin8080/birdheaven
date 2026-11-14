@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bird Heaven — live from the backyard feeders</title>
+  <meta name="description" content="Live and recorded video of the birds visiting one backyard's feeders.">
+  <meta name="color-scheme" content="light dark">
+  <meta property="og:title" content="Bird Heaven">
+  <meta property="og:description" content="Live and recorded video of the birds visiting one backyard's feeders.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Source+Sans+3:wght@400;600&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <script src="/js/site.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="/" aria-label="Bird Heaven home">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="23" class="mark-bg"/>
+          <path class="mark-branch" d="M6 34c10-2 24-2 36 1" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+          <path class="mark-bird" d="M15 31c0-6 4-11 10-11 2.2 0 3.6-2.4 5.8-2.4 1.6 0 2.8.9 3.4 2.1l3.3.9-3.2 1.3c-.2 5.6-4.2 9.1-10.3 9.1H15z"/>
+          <circle cx="31.4" cy="20.6" r="0.95" class="mark-eye"/>
+          <path class="mark-bird" d="M15 31l-5 2.6 1.6-3.4z"/>
+        </svg>
+        <span class="brand-name" data-site-name>Bird Heaven</span>
+      </a>
+      <nav class="site-nav" aria-label="Sections">
+        <a href="#watch">Watch</a>
+        <a href="#recordings">Recordings</a>
+        <a href="#notes">Field notes</a>
+        <a href="#support" class="nav-support" data-support-link hidden>Support</a>
+      </nav>
+    </div>
+    <svg class="flyby" viewBox="0 0 60 24" aria-hidden="true">
+      <path d="M2 14c8-8 14-8 20-2 2-6 8-10 16-8-6 1-10 5-11 10 6-4 14-5 22-1-9 0-16 3-21 8-4-6-14-9-26-7z"/>
+    </svg>
+  </header>
+
+  <main id="main">
+    <!-- ============================== HERO / LIVE ============================== -->
+    <section id="watch" class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-player">
+        <div class="player" data-live-player>
+          <div class="player-status">
+            <span class="pill pill-offline" data-live-pill>
+              <span class="dot" aria-hidden="true"></span><span data-live-label>Checking the feeder…</span>
+            </span>
+          </div>
+
+          <!-- Offline card; replaced by a <video> or <iframe> when live. -->
+          <div class="player-offline" data-offline>
+            <img class="player-poster" data-offline-poster alt="" hidden>
+            <div class="player-offline-text">
+              <p class="kicker">Feeder cam</p>
+              <p class="player-headline">The camera is resting.</p>
+              <p class="player-sub">Birds keep early hours. Until the live feed is back, here's a recent visitor.</p>
+              <button class="btn btn-light" type="button" data-play-latest hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                Play the latest highlight
+              </button>
+            </div>
+          </div>
+        </div>
+        <p class="player-caption" data-live-title>Feeder cam</p>
+      </div>
+
+      <div class="hero-copy">
+        <p class="kicker" data-greeting>From the backyard</p>
+        <h1 id="hero-title">A quiet window onto the <em>busiest</em> spot in the yard.</h1>
+        <p class="lede" data-tagline>Live and recorded video of the cardinals, chickadees, finches and occasional
+          squirrel-in-disguise that visit our feeders.</p>
+
+        <dl class="stats">
+          <div><dt>Clips in the archive</dt><dd data-stat-clips>—</dd></div>
+          <div><dt>Species spotted</dt><dd data-stat-species>—</dd></div>
+          <div><dt>Latest visitor</dt><dd data-stat-latest>—</dd></div>
+        </dl>
+
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#recordings">Browse recordings</a>
+          <a class="btn btn-ghost" href="#support" data-support-link hidden>Help keep it online</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== RECENT VISITORS ============================== -->
+    <section class="visitors wrap" aria-labelledby="visitors-title">
+      <h2 id="visitors-title" class="visually-hidden">Recent visitors</h2>
+      <div class="chips" role="toolbar" aria-label="Filter recordings by species" data-chips></div>
+    </section>
+
+    <div class="divider wrap" aria-hidden="true">
+      <svg viewBox="0 0 600 30" preserveAspectRatio="none"><path d="M0 18c80-6 160-10 250-6 40 2 60-8 90-10m-10 10c60 2 150 0 270 4" fill="none"/><path class="leaf" d="M340 2c6 2 10 6 8 12-6-2-10-6-8-12zM372 12c-6 1-10 6-9 11 6-1 10-5 9-11z"/></svg>
+    </div>
+
+    <!-- ============================== RECORDINGS ============================== -->
+    <section id="recordings" class="recordings wrap" aria-labelledby="recordings-title">
+      <header class="section-head">
+        <p class="kicker">The archive</p>
+        <h2 id="recordings-title">Recent recordings</h2>
+        <p class="section-sub" data-filter-note>Short clips, trimmed from the feeder cam. Newest first.</p>
+      </header>
+      <ul class="grid" data-grid aria-live="polite"></ul>
+      <p class="empty" data-empty hidden>No recordings yet — the first clips are on their way.</p>
+      <div class="more" data-more hidden><button class="btn btn-ghost" type="button" data-more-btn>Show more</button></div>
+    </section>
+
+    <!-- ============================== FIELD NOTES ============================== -->
+    <section id="notes" class="notes wrap" aria-labelledby="notes-title">
+      <header class="section-head">
+        <p class="kicker">Field notes</p>
+        <h2 id="notes-title">How the feeder gets to your screen</h2>
+      </header>
+      <ol class="steps">
+        <li>
+          <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="6" y="12" width="22" height="16" rx="3"/><path d="M28 17l7-4v14l-7-4z"/><circle cx="17" cy="20" r="4"/></svg>
+          <h3>A camera at the feeder</h3>
+          <p>A weatherproof camera watches the platform feeder from a few feet away — close enough to count tail feathers.</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 30l6-14 6 8 4-5 8 11z"/><circle cx="27" cy="11" r="3"/><path d="M5 34h30"/></svg>
+          <h3>The good bits, trimmed</h3>
+          <p>Most footage is an empty feeder. The best visits are trimmed into short clips and tagged by species.</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M12 28a7 7 0 01-.6-14A10 10 0 0130 15a6.5 6.5 0 01-1 13z"/><path d="M20 20v12m-4-4l4 4 4-4"/></svg>
+          <h3>Delivered from the cloud</h3>
+          <p>Clips live in cloud storage and stream to you from a nearby edge server, so a popular video never slows the site.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============================== SUPPORT ============================== -->
+    <section id="support" class="support wrap" aria-labelledby="support-title" data-support hidden>
+      <div class="support-card">
+        <div class="support-copy">
+          <p class="kicker">Support the archive</p>
+          <h2 id="support-title">Keep the feeders on camera.</h2>
+          <p>There are no ads here and there never will be. Every clip is stored and streamed from cloud storage,
+            which costs a little more each month as the archive grows. If a visit brightened your day, a small
+            donation helps keep the whole flock online.</p>
+          <p class="fine">Donations are processed securely by PayPal. You don't need a PayPal account.</p>
+        </div>
+        <form class="support-form" action="https://www.paypal.com/donate" method="post" target="_blank" data-paypal-form>
+          <input type="hidden" name="hosted_button_id" value="" data-paypal-id>
+          <input type="hidden" name="no_recurring" value="0">
+          <input type="hidden" name="currency_code" value="USD">
+          <svg class="seed-jar" viewBox="0 0 80 96" aria-hidden="true">
+            <rect x="18" y="6" width="44" height="10" rx="3" class="jar-lid"/>
+            <path d="M14 22c0-4 4-6 8-6h36c4 0 8 2 8 6v62c0 5-4 8-9 8H23c-5 0-9-3-9-8z" class="jar-glass"/>
+            <path d="M16 56c10-4 38-4 48 0v28c0 4-3 6-7 6H23c-4 0-7-2-7-6z" class="jar-seed"/>
+            <g class="jar-dots"><circle cx="28" cy="66" r="2"/><circle cx="40" cy="72" r="2"/><circle cx="52" cy="64" r="2"/><circle cx="34" cy="80" r="2"/><circle cx="48" cy="82" r="2"/></g>
+          </svg>
+          <button class="btn btn-paypal" type="submit">
+            <span>Donate with</span>
+            <span class="paypal-word"><span class="pp-pay">Pay</span><span class="pp-pal">Pal</span></span>
+          </button>
+          <p class="fine">Opens PayPal in a new tab.</p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p>© <span data-year>2026</span> <span data-site-name>Bird Heaven</span><span data-location></span></p>
+      <p class="fine">No birds were bribed. Well — sunflower seeds.</p>
+    </div>
+  </footer>
+
+  <!-- Clip player. A native <dialog>: focus trapping and Esc come for free. -->
+  <dialog class="viewer" data-viewer aria-labelledby="viewer-title">
+    <form method="dialog" class="viewer-close-form">
+      <button class="viewer-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </form>
+    <div class="viewer-media">
+      <video data-viewer-video controls playsinline preload="metadata"></video>
+      <p class="viewer-error" data-viewer-error hidden>This clip couldn't be loaded. It may still be uploading — try again in a minute.</p>
+    </div>
+    <div class="viewer-meta">
+      <h2 id="viewer-title" data-viewer-title></h2>
+      <p class="viewer-when" data-viewer-when></p>
+      <p data-viewer-desc></p>
+      <ul class="tags" data-viewer-tags></ul>
+    </div>
+  </dialog>
+
+  <template id="card-tpl">
+    <li class="card">
+      <button class="card-btn" type="button">
+        <span class="card-thumb">
+          <img loading="lazy" alt="">
+          <span class="card-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></span>
+          <span class="card-dur"></span>
+        </span>
+        <span class="card-body">
+          <span class="card-title"></span>
+          <span class="card-when"></span>
+        </span>
+      </button>
+      <ul class="tags"></ul>
+    </li>
+  </template>
+</body>
+</html>

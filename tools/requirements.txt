@@ -1,0 +1,4 @@
+# Workstation-only: tools/publish.py talks to Spaces through its S3 API.
+#     python -m venv .venv
+#     .venv\Scripts\pip install -r tools\requirements.txt
+boto3>=1.34,<2.0
