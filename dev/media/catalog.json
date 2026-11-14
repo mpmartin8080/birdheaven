@@ -127,5 +127,5 @@
       "featured": false
     }
   ],
-  "_comment": "Local-development sample. Posters are generated SVGs in dev/media/posters; the .mp4 files do not exist, so clicking a card shows the viewer's error state. Drop any MP4 at dev/media/videos/<slug>.mp4 to see playback."
+  "_comment": "Local-development sample. dev/media mirrors the Spaces bucket layout (catalog.json, site-settings.json, videos/, posters/) and is used by both the web service and the admin console's local storage backend. Posters here are generated SVGs; the sample .mp4 files do not exist, so playing one shows the viewer's error state."
 }

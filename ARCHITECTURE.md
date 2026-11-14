@@ -1,104 +1,90 @@
 # Bird Heaven — Architecture
 
 A public website for sharing live and recorded video of the birds visiting one
-backyard. Anyone can watch; only the owner publishes.
+backyard. Anyone can watch; only the owner publishes, through a
+passkey-protected admin console.
 
 ```
-                         ┌──────────────────── DigitalOcean ─────────────────────┐
-                         │                                                        │
-  visitor's browser      │   Droplet (Debian 13 + Docker)                         │
-  ─────────────────      │   ┌──────────────────────────────────────────────┐     │
-   https://<domain>/ ────┼──▶│ caddy :80/:443  (TLS via Let's Encrypt)      │     │
-        │                │   │    └─ reverse_proxy ─▶ web :8000 (FastAPI)   │     │
-        │                │   │                         ├─ /            page  │     │
-        │                │   │                         ├─ /api/config        │     │
-        │                │   │                         ├─ /api/videos ◀──────┼──┐  │
-        │                │   │                         ├─ /api/live   (stub) │  │  │
-        │                │   │                         └─ /api/health        │  │  │
-        │                │   │  [future] live ingest (e.g. MediaMTX)         │  │  │
-        │                │   └──────────────────────────────────────────────┘  │  │
-        │                │                                                     │  │
-        │  <video src>   │   Spaces bucket  ──▶  Spaces CDN (edge cache)       │  │
-        └────────────────┼──▶  videos/2026/11/<slug>.mp4                       │  │
-                         │     posters/2026/11/<slug>.jpg                      │  │
-                         │     catalog.json  ─────────────────────────────────────┘
-                         │                                                        │
-                         │   (no registry: image built on the droplet over SSH)   │
-                         └────────────────────────────────────────────────────────┘
-                                         ▲
-  owner's workstation (Windows)          │  deploy-droplet deploy        (site code)
-  ───────────────────────────────────────┘  python -m tools.publish ...  (videos)
+                         ┌──────────────────────── DigitalOcean ─────────────────────────┐
+                         │  Droplet (Debian 13 + Docker)                                  │
+  visitor's browser      │  ┌──────────────────────────────────────────────────────────┐ │
+   https://<domain>/ ────┼─▶│ caddy :80 :443 :7777  (one Let's Encrypt cert)           │ │
+                         │  │   ├─ <domain>:443    ─▶ web :8000   (FastAPI, no secrets)│ │
+  owner's browser        │  │   │                      /, /api/videos, /api/live, ...  │ │
+   https://<dom>:7777/ ──┼─▶│   └─ <domain>:7777   ─▶ admin :8000 (FastAPI + ffmpeg)   │ │
+        │                │  │                          passkeys, uploads, settings     │ │
+        │                │  │                          volume: admin-data (/data)      │ │
+        │                │  │  [future] live ingest (e.g. MediaMTX)                    │ │
+        │                │  └───────────────┬──────────────────────┬───────────────────┘ │
+        │                │       reads JSON │                      │ writes objects      │
+        │                │                  ▼                      ▼                     │
+        │  <video src>   │  Spaces bucket ──▶ Spaces CDN                                  │
+        └────────────────┼─▶  catalog.json, site-settings.json                           │
+   (visitors too)        │    videos/YYYY/MM/<slug>.mp4, posters/YYYY/MM/<slug>.jpg       │
+                         │  (no registry: both images built on the droplet over SSH)      │
+                         └────────────────────────────────────────────────────────────────┘
+                                           ▲
+  owner's workstation (Windows) ───────────┘  deploy-droplet deploy   (code + config)
+                                              python -m tools.publish (optional CLI)
 ```
 
 ## Components
 
 | Piece | What it is | Where it lives |
 |---|---|---|
-| `webroot/` | The front page: plain HTML/CSS/JS, no build step, no framework | Baked into the image |
-| `app/birdheaven/` | Small FastAPI service: serves the page, the catalog API, the live-status stub, security headers | Container on the droplet |
-| Caddy | TLS termination, HTTP→HTTPS redirect, compression | Container on the droplet |
-| Spaces + CDN | Every recorded video, its poster image, and `catalog.json` | DigitalOcean Spaces |
-| `deploy/` | Workstation CLI: bootstrap droplet, build image on the droplet over SSH, `compose up`, roll back, prune | Your machine only |
-| `tools/publish.py` | Workstation CLI: optimise a clip, cut a poster, upload both, add it to the catalog | Your machine only |
+| `webroot/` | The public front page: plain HTML/CSS/JS, no build step | Baked into the `web` image |
+| `app/birdheaven/` | Public FastAPI service: page, catalog API, live-status stub, site settings overlay, security headers. **Holds no secrets.** | `web` container |
+| `admin/birdadmin/` + `admin/static/` | Admin console: passkey sign-in, upload/edit/delete clips, regenerate posters, edit site settings, manage passkeys | `admin` container, at `https://<domain>:7777/` |
+| Caddy | TLS on :443 and :7777 (one certificate), HTTP→HTTPS, compression, upload size backstop | `caddy` container |
+| Spaces + CDN | Videos, posters, `catalog.json`, `site-settings.json` | DigitalOcean Spaces |
+| `deploy/` | Workstation CLI: bootstrap, build both images on the droplet, `compose up`, certificates, rollback, prune, admin password | Your machine only |
+| `tools/publish.py` | Optional command-line publishing; same code as the admin console | Your machine only |
 
-The deployment mechanics are lifted directly from `../financesite`: the
-image is built on the droplet's own Docker daemon via `DOCKER_HOST=ssh://` and
-started with `docker compose -f app/compose.yaml -f deploy/compose.prod.yaml up -d`.
-Nothing is rsynced.
+The deployment mechanics come from `../financesite`: images are built on the
+droplet's own Docker daemon via `DOCKER_HOST=ssh://` and started with
+`docker compose -f app/compose.yaml -f deploy/compose.prod.yaml up -d`. Secrets
+and per-machine settings live in a gitignored `deploy/.env.prod`, optionally
+as `op://` 1Password references.
 
-One deliberate departure: **no container registry.** The DigitalOcean account
-allows one registry and financesite uses it. Since the build already runs on
-the droplet's daemon, the image simply stays in that daemon's local store as
-`birdheaven-web:<git sha>`, and compose runs it with `pull_policy: never`.
-Old tags remain on the droplet for rollback (`deploy-droplet images`,
-`deploy-droplet up --tag <sha>`) until `deploy-droplet prune` removes them.
-The trade-off: if the droplet is rebuilt, there is no stored image to pull —
-you just run `deploy` again, which rebuilds from source. Secrets and per-machine settings live in a gitignored
-`deploy/.env.prod`, optionally as `op://` 1Password references.
-
-What was dropped from financesite because this site doesn't need it:
-Postgres, login/session auth, WebAuthn, Plaid and its webhook port. The site
-is public and read-only, so the running container holds **no secrets at all**.
+**No container registry.** The DigitalOcean account allows one registry and
+financesite uses it. Since the build already runs on the droplet's daemon, the
+images simply stay in its local store as `birdheaven-web:<sha>` and
+`birdheaven-admin:<sha>`, and compose runs them with `pull_policy: never`. Old
+tags stay for rollback (`deploy-droplet images`, `up --tag <sha>`) until
+`deploy-droplet prune`. If the droplet is rebuilt, `deploy` rebuilds from source.
 
 ## Storage strategy: DigitalOcean Spaces with the built-in CDN
 
 **Decision:** recorded video is stored as objects in a Spaces bucket and served
-to browsers straight from the Spaces CDN endpoint. The droplet never touches
-video bytes.
-
-Why, against the alternatives:
+to browsers straight from the Spaces CDN endpoint. Viewers never pull video
+through the droplet. (Uploads do pass through it, via the admin console.)
 
 | Option | Verdict |
 |---|---|
-| **Spaces + CDN** | **Chosen.** $5/mo base covers 250 GiB stored + 1 TiB egress, then ~$0.02/GiB stored and ~$0.01/GiB out. CDN is included at no extra cost. Videos scale independently of the droplet; a viral cardinal clip hits the CDN, not your 1 vCPU box. S3-compatible, so standard tooling (boto3, rclone, s3cmd) works. |
-| Block-storage Volume on the droplet | Rejected. $0.10/GiB/mo (5× Spaces), every view streams through the droplet's CPU and bandwidth allowance, no edge cache, and a droplet outage takes the archive down with it. |
+| **Spaces + CDN** | **Chosen.** $5/mo base covers 250 GiB stored + 1 TiB egress, then ~$0.02/GiB stored and ~$0.01/GiB out. CDN included. Video scales independently of the droplet. S3-compatible. |
+| Block-storage Volume on the droplet | Rejected. $0.10/GiB/mo (5× Spaces), every view streams through the droplet, no edge cache. |
 | Droplet root disk | Rejected. Small, tied to the droplet's lifecycle, same bandwidth problem. |
-| YouTube / Vimeo embeds | Rejected for now. Free, but it's their player, their ads and their recommendations next to your birds. Easy to add later as a secondary mirror. |
-| Managed video platform (Mux, Cloudflare Stream) | Overkill for a backyard archive; per-minute pricing grows with the archive. Worth revisiting only if adaptive bitrate becomes essential. |
+| YouTube / Vimeo embeds | Rejected for now: their player, ads and recommendations. Easy to add later as a mirror. |
+| Managed video (Mux, Cloudflare Stream) | Overkill for a backyard archive; per-minute pricing. |
 
-**File format:** H.264 video + AAC audio in MP4, with the `moov` atom moved to
-the front (`-movflags +faststart`) so playback starts before the download
-finishes and seeking works via HTTP range requests. Every browser plays it
-natively; no player library is needed for recordings. A 1080p clip at CRF 23 is
-roughly 3–6 MB per minute of backyard footage. `tools/publish.py` handles
-this. If clips get long (> ~10 min), HLS packaging is the next step and the
-bucket layout already has room for it (`hls/<slug>/…`).
+**File format:** H.264 + AAC in MP4 with `+faststart`, so playback starts
+immediately and seeking uses HTTP range requests. Every browser plays it
+natively. Clips that are already H.264 (most cameras and phones) are only
+*remuxed*, which takes seconds even on the droplet; other formats are
+transcoded with x264 `veryfast` (CRF 23, capped at 1080p).
 
 **Bucket layout:**
 
 ```
 <bucket>/
-  catalog.json                    ← the index of every published clip
-  videos/YYYY/MM/<slug>.mp4       ← public-read, Cache-Control: 1 year, immutable
-  posters/YYYY/MM/<slug>.jpg      ← public-read, Cache-Control: 1 year, immutable
+  catalog.json                ← every published clip            (Cache-Control: 30 s)
+  site-settings.json          ← written by the admin console     (Cache-Control: 30 s)
+  videos/YYYY/MM/<slug>.mp4   ← public-read, immutable           (Cache-Control: 1 year)
+  posters/YYYY/MM/<slug>.jpg  ← public-read, immutable; a regenerated poster gets a new key
 ```
 
-Media objects are immutable (a re-edit gets a new slug), so they can be cached
-forever at the edge. `catalog.json` changes on every publish and is uploaded
-with `Cache-Control: max-age=60`.
-
 **The catalog** is a JSON document, not a database. One owner publishing a
-handful of clips a week does not justify running Postgres. Its shape:
+handful of clips a week does not need Postgres:
 
 ```json
 {
@@ -114,84 +100,141 @@ handful of clips a week does not justify running Postgres. Its shape:
       "duration": 48.2,
       "video": "videos/2026/11/2026-11-14-cardinal-pair.mp4",
       "poster": "posters/2026/11/2026-11-14-cardinal-pair.jpg",
-      "width": 1920, "height": 1080, "bytes": 3812455
+      "width": 1920, "height": 1080, "bytes": 3812455, "featured": true
     }
   ]
 }
 ```
 
-Paths are relative to `MEDIA_BASE_URL` (the CDN endpoint, or a custom CDN
-domain). The FastAPI service fetches the catalog server-side, caches it for 60
-s, validates it, and serves it as `/api/videos` with absolute URLs. Proxying
-the catalog — rather than having the browser fetch it from the CDN — avoids a
-CORS configuration on the bucket and means a malformed catalog can't break the
-page. The `<video>` and `<img>` elements load media from the CDN directly, which
-needs no CORS.
+The `web` service fetches the catalog and settings server-side, caches them
+for 60 s, validates them, and serves `/api/videos` with absolute URLs. A
+malformed document degrades to "fewer clips" or "default settings", never a
+broken page. Browsers load `<video>`/`<img>` straight from the CDN (no CORS
+needed). Only the admin console writes these documents. It serialises its
+own writes with a lock; running `tools/publish.py` at the same moment as an
+admin upload is the one race left, and it is unlikely with one owner.
 
 **Cost guardrails:** the donate button exists because egress is the one
-variable cost. Spaces' 1 TiB/month included transfer is ~250,000 one-minute
-clip views; beyond that, a DigitalOcean billing alert is the backstop (set
-one in the control panel — see `deploy/README.md`).
+variable cost. 1 TiB/month is ~250,000 one-minute clip views; a DigitalOcean
+billing alert is the backstop (see `deploy/README.md`).
+
+## Admin console
+
+A second container, served by Caddy on the site's own hostname and IP at
+**port 7777** (`https://<domain>:7777/`; `BIRD_DEPLOY_ADMIN_PORT`). It uses
+the same certificate and needs no extra DNS. The port can be firewalled to the
+owner's IP, since Let's Encrypt never needs to reach it.
+
+**What a separate port does and doesn't isolate.** A different port is a
+different *origin*, so the browser's same-origin policy stops pages on the
+public site from reading anything the console returns. The console also
+rejects every state-changing request whose `Origin` isn't exactly
+`https://<domain>:7777` (tested), so a page on `:443` can't act on it either.
+Passkeys are bound to the hostname (RP ID `<domain>`), and each signature
+covers the exact origin including the port, so an assertion made on `:443`
+is useless at `:7777`. **Cookies, though, are scoped by hostname, not port**:
+the browser also sends the console's session cookie (`HttpOnly`, so scripts
+can't read it) with requests to the public site. That matters only if the
+`web` container itself were compromised; it could then capture the cookie of
+an owner browsing the public site while signed in. A separate hostname
+(`admin.<domain>`) would close that gap. On a single public IP and hostname,
+the mitigations are short sessions (8 h), signing out when done, and
+firewalling 7777 to your own IP.
+
+**What it does:**
+
+- **Clips:** list with thumbnails, search, feature/unfeature (featured clips
+  appear when the live camera is off), edit title/species/date/description,
+  set the poster from any frame of the video, delete (optionally removing the
+  files from the bucket).
+- **Upload:** drag-and-drop with a progress bar. The browser streams the file
+  to the console (`PUT`, raw body); a single background worker probes it,
+  remuxes or transcodes, grabs a poster, uploads both to Spaces and adds the
+  catalog entry. Several uploads can be queued; status is polled. The default
+  limit is 4 GiB (`ADMIN_MAX_UPLOAD_MB`).
+- **Site settings:** name, tagline, intro paragraph, location, PayPal button
+  ID, and the live-stream fields. These are saved as `site-settings.json` in
+  the bucket, and the public site picks them up within about a minute, with
+  no redeploy. The `.env.prod` values become defaults for anything left blank.
+- **Passkeys:** add (one per device), list, remove.
+
+**Authentication** follows financesite's WebAuthn design (py_webauthn,
+discoverable credentials, user verification required, the challenge in a
+short-lived signed cookie, the RP ID taken from the host that served the
+request). Sessions are signed, timed cookies (8 h), `HttpOnly`, `Secure`,
+`SameSite=Strict`. Every state-changing `/api` request must also carry the
+console's own `Origin`, which gives CSRF protection without tokens. Failed
+sign-ins are throttled (10 per 15 min). Passkeys (public keys only) are stored
+in `/data/passkeys.json` on the `admin-data` volume.
+
+**The recovery switch:** `ADMIN_PASSWORD_LOGIN` in `deploy/.env.prod`.
+
+| Switch | Behaviour |
+|---|---|
+| `false` (default) | Passkeys only. The password endpoint returns 404; the hash may stay in the file. Any password session still open is invalidated. |
+| `true` | The sign-in page also accepts the recovery password (Argon2id hash in `ADMIN_PASSWORD_HASH`). The console shows a standing warning until the switch is off again. |
+
+Use `true` to register the first passkey, or to recover after losing every
+passkey (or the `admin-data` volume). Then set it back to `false`.
+`deploy-droplet admin-password` sets the hash and session key. The console
+refuses to start with no session key, or with the switch on and no valid hash;
+it fails closed. It also refuses to delete your last passkey while the switch
+is off, which would lock you out.
+
+**Container:** `python:3.11-slim` with Debian's ffmpeg (so not distroless,
+unlike `web`), runs as uid 10001, publishes no port itself, and only Caddy
+reaches it (Caddy publishes 7777 and proxies to it). It is the only container holding secrets: the session key, the
+password hash, and the Spaces key.
 
 ## Live video: a stub with a clear seam
 
-The protocol isn't decided, so the site treats live video as configuration:
-
-- `GET /api/live` returns `{"status": "offline" | "live", "kind": ..., "url": ..., "title": ...}`.
-- Today it reflects environment variables (`LIVE_STATUS`, `LIVE_KIND`,
-  `LIVE_URL`, `LIVE_TITLE`). Defaults: offline.
-- The front-end player understands `kind`:
-  - `hls` — plays via native HLS (Safari/iOS) or hls.js (loaded only when needed).
-  - `video` — any URL a `<video>` element can play directly.
-  - `iframe` — an embed URL (YouTube Live, Owncast's embed page, etc.).
-  - anything else / offline — the "resting" card with the latest highlight.
-
-The likely real implementations, all of which slot behind that endpoint
-without changing the page:
+`GET /api/live` returns `{"status": "offline" | "live", "kind", "url", "title"}`.
+Today it reflects the live fields in site settings: the admin console, or the
+`LIVE_*` env defaults. The player understands `hls` (native or hls.js),
+`video` (any `<video>`-playable URL) and `iframe` (YouTube Live, Owncast). The
+public CSP is computed per request so an embed's origin is allowed only while
+it is configured.
 
 | Path | Camera → | Browser gets | Notes |
 |---|---|---|---|
-| **MediaMTX** on the droplet | RTSP/RTMP/SRT push | HLS (and/or WebRTC via WHEP) | Single Go binary, one more compose service. Most flexible. |
+| **MediaMTX** on the droplet | RTSP/RTMP/SRT push | HLS (and/or WebRTC via WHEP) | One more compose service. Most flexible. |
 | **Owncast** on the droplet | RTMP push from OBS | HLS + chat | Batteries-included; heavier. |
-| **YouTube Live** | RTMP push | iframe | Zero server cost; their platform. |
+| **YouTube Live** | RTMP push | iframe | Zero server cost; their platform. Works today via the admin console. |
 
 When one is chosen: add the service to `deploy/compose.prod.yaml`, add a Caddy
-route (e.g. `handle_path /live/* { reverse_proxy mediamtx:8888 }`), set
-`LIVE_KIND=hls` and `LIVE_URL=/live/feeder/index.m3u8`, and replace the env-var
-logic in `app/birdheaven/live.py` with a real probe of the ingest server so
-`status` flips automatically when the camera connects. Ingest bandwidth (a
-1080p camera pushes ~4–6 Mbps continuously) is the main reason to keep the
-droplet and the live server sized together.
+route (e.g. `handle_path /live/* { reverse_proxy mediamtx:8888 }`), and replace
+`app/birdheaven/live.py` with a real probe so `status` flips automatically.
 
 ## Donations
 
-A PayPal **hosted Donate button**, rendered as a plain HTML `<form>` that posts
-to `https://www.paypal.com/donate`. No PayPal JavaScript runs on the page, which
-keeps the Content-Security-Policy tight (`form-action` allows PayPal; nothing
-else does). The button ID comes from `PAYPAL_HOSTED_BUTTON_ID`; the page hides
-the support panel entirely if it isn't set. Create the button at
-paypal.com → *Pay & Get Paid* → *Accept Donations* → *Donate Button*.
+A PayPal **hosted Donate button**, rendered as a plain HTML `<form>` that
+posts to `https://www.paypal.com/donate`. No PayPal JavaScript runs, which
+keeps the CSP tight. The button ID is set in the admin console (or
+`PAYPAL_HOSTED_BUTTON_ID`); the support panel is hidden if it is empty.
 
 ## Security posture
 
-- Public, read-only site: no login, no user input stored, no database.
-- Container holds no credentials. Spaces keys exist only on the workstation,
-  used by `tools/publish.py`.
-- Distroless, non-root runtime image (same base and reasoning as financesite).
-- Strict CSP: scripts from self (+ cdnjs only for hls.js), media and images
-  from self + the configured media origin, forms to self + PayPal,
-  `frame-ancestors 'none'`.
-- Caddy is the only published container; the app is reachable only on the
-  compose network.
+- **Public site:** read-only, no login, no database, no secrets in the
+  container. Distroless, non-root. Strict CSP (scripts from self, plus cdnjs
+  for hls.js only; media from the configured origin; forms to PayPal;
+  `frame-ancestors 'none'`).
+- **Admin console:** deny-by-default auth gate with an explicit public-path
+  list. Passkeys with user verification. The password exists only behind the
+  switch. Origin check plus `SameSite=Strict`. `noindex`. Strict CSP with no
+  inline script or style. A non-root container. Settings input is validated
+  server-side (PayPal ID charset; https-only live URLs).
+- **Network:** Caddy is the only published container, on 80, 443 and 7777.
+  Ports 80 and 443 must be open to the internet for Let's Encrypt; 7777 can
+  and should be limited to the owner's IP (see `deploy/README.md`, Firewall).
 
 ## Hosting note: separate droplet vs. sharing financesite's
 
-Both stacks publish Caddy on :80/:443, so they cannot simply run side by side
-on one droplet. The default here is a **separate droplet** (the cheapest $6
-droplet is plenty, because video goes via the CDN). To co-host instead, drop
-`caddy` from `deploy/compose.prod.yaml`, attach `web` to the finance stack's
-network, and add a `birds.<domain> { reverse_proxy birdheaven-web-1:8000 }`
-block to financesite's Caddyfile.
+Both stacks publish Caddy on :80/:443, so they can't simply run side by side
+on one droplet. The default is a **separate droplet** (the $6 size is
+enough). To co-host, drop `caddy` from `deploy/compose.prod.yaml`, attach `web`
+and `admin` to the finance stack's network, and add the site block and the
+`:7777` admin block to financesite's Caddyfile (financesite already uses 6444
+for its webhook, so there's no clash).
 
 ## Repository layout
 
@@ -199,14 +242,18 @@ block to financesite's Caddyfile.
 ARCHITECTURE.md        this file
 README.md              quick start
 deploy-droplet.bat     cmd.exe launcher for python -m deploy
-app/
+app/                   public site service (web)
   Dockerfile           distroless runtime, build context = repo root
-  compose.yaml         local dev (web only, port 8000)
-  requirements.txt
-  birdheaven/          FastAPI service (main, config, catalog, live)
-  tests/               pytest-free smoke tests (python -m app.tests.smoke)
-webroot/               the front page
+  compose.yaml         local dev: web on :8000, admin on :8001
+  birdheaven/          main, config, catalog, sitesettings, live
+  tests/smoke.py       py -3 -m app.tests.smoke
+admin/                 admin console service (admin)
+  Dockerfile           slim + ffmpeg, non-root
+  birdadmin/           main (routes), auth, passkeys, media, storage, jobs, hashpw
+  static/              console + sign-in pages
+  tests/smoke.py       py -3 -m admin.tests.smoke
+webroot/               the public front page
 deploy/                droplet deployment CLI (adapted from financesite)
-tools/publish.py       optimise + upload a clip, update catalog.json
-dev/catalog.json       sample catalog for local development
+tools/publish.py       command-line publishing (shares admin/birdadmin/media.py)
+dev/media/             local "bucket" for development: catalog.json, posters/
 ```

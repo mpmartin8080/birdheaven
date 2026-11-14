@@ -1,15 +1,18 @@
 """The values in deploy/.env.prod that are handed to the containers.
 
-Replaces financesite's secrets_cli.py. The running site has no secrets -- no
-password, no session key, no database -- so there is nothing to generate. What
-remains is *site settings* (media URL, PayPal button, live stream stub) that
-compose.prod.yaml substitutes into the `web` service, plus the Spaces
-credentials that only ever stay on this workstation:
+Replaces financesite's secrets_cli.py. Two groups go to `docker compose`:
 
-    SPACES_KEY / SPACES_SECRET  uploading clips (tools/publish.py)
+  * SITE_KEYS -- defaults for the public `web` service (catalog URL, site
+    text, PayPal, live stub). Not secret. The admin console's Site settings
+    page overrides most of them at runtime.
+  * ADMIN_KEYS -- the `admin` service's secrets and switches: its session
+    signing key, the recovery-password switch and hash, and the Spaces key it
+    uploads with. Only the admin container receives these.
 
-Those are never passed to `docker compose`. As in financesite, any value may be
-an `op://` 1Password reference, resolved in memory at the moment it is needed.
+As in financesite, any value may be an `op://` 1Password reference, resolved
+in memory at the moment it is needed. Values reach Compose through the
+subprocess environment, never --env-file, so the `$`s in an Argon2 hash
+survive intact (see compose_ops.py).
 """
 
 from __future__ import annotations
@@ -33,13 +36,41 @@ SITE_KEYS = (
     "LOG_LEVEL",
 )
 
-_WORKSTATION_ONLY = ("SPACES_KEY", "SPACES_SECRET")
+ADMIN_KEYS = (
+    "ADMIN_SESSION_KEY",
+    "ADMIN_PASSWORD_LOGIN",
+    "ADMIN_PASSWORD_HASH",
+    "SPACES_KEY",
+    "SPACES_SECRET",
+    "SPACES_BUCKET",
+    "SPACES_REGION",
+)
+
+_SECRET = {"ADMIN_SESSION_KEY", "ADMIN_PASSWORD_HASH", "SPACES_KEY", "SPACES_SECRET"}
 
 
 def compose_values(cfg: DeployConfig) -> dict[str, str]:
     raw = parse_env_file(cfg.env_file)
-    picked = {k: raw[k] for k in SITE_KEYS if raw.get(k)}
+    picked = {k: raw[k] for k in (*SITE_KEYS, *ADMIN_KEYS) if raw.get(k)}
     return onepassword.resolve(picked)
+
+
+def set_values(cfg: DeployConfig, updates: dict[str, str]) -> None:
+    """Rewrite KEY=value lines in deploy/.env.prod, keeping every other line as-is."""
+    path = cfg.env_file
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    remaining = dict(updates)
+    out = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
+        if key in remaining:
+            out.append(f"{key}={remaining.pop(key)}")
+        else:
+            out.append(line)
+    if remaining:
+        out += ["", "# Added by deploy-droplet admin-password"]
+        out += [f"{k}={v}" for k, v in remaining.items()]
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 def value(cfg: DeployConfig, key: str) -> str:
@@ -53,19 +84,22 @@ def check(cfg: DeployConfig) -> None:
     if not raw:
         print(f"  {cfg.env_file} does not exist or is empty -- copy deploy/.env.example")
         return
-    for key in (*SITE_KEYS, *_WORKSTATION_ONLY):
+    for key in (*SITE_KEYS, *ADMIN_KEYS):
         v = raw.get(key, "").strip()
         if not v:
             state = "(unset)"
         elif onepassword.is_reference(v):
             onepassword.resolve({key: v})
             state = f"1Password {v} -- resolves"
-        elif key in _WORKSTATION_ONLY:
+        elif key in _SECRET:
             state = "set in file"
         else:
             state = v
         print(f"  {key:28} {state}")
     if not raw.get("CATALOG_URL"):
         print("\n  warning: CATALOG_URL unset -- the deployed site will show no recordings.")
-    if not raw.get("PAYPAL_HOSTED_BUTTON_ID"):
-        print("  note: PAYPAL_HOSTED_BUTTON_ID unset -- the donate panel stays hidden.")
+    if not raw.get("ADMIN_SESSION_KEY"):
+        print("  warning: ADMIN_SESSION_KEY unset -- the admin console will not start. "
+              "Run `deploy-droplet admin-password`.")
+    if raw.get("ADMIN_PASSWORD_LOGIN", "").strip().lower() in {"1", "true", "yes", "on"}:
+        print("  note: ADMIN_PASSWORD_LOGIN is ON. Switch it off once a passkey is registered.")

@@ -30,7 +30,10 @@ def _env(cfg: DeployConfig, tag: str | None) -> dict[str, str]:
     env = docker_env(cfg)
     env.update(envfile.compose_values(cfg))
     env["BIRD_IMAGE"] = cfg.image_name
+    env["BIRD_ADMIN_IMAGE"] = cfg.admin_image_name
     env["BIRD_SITE_DOMAIN"] = cfg.site_domain
+    env["BIRD_ADMIN_PORT"] = str(cfg.admin_port)
+    env["BIRD_SITE_ORIGIN"] = cfg.site_origin
     env["BIRD_HTTPS_PORT"] = str(cfg.https_port)
     env["BIRD_HTTPS_PORT_SUFFIX"] = cfg.https_port_suffix
     env["BIRD_PORT80_MODE"] = cfg.port80_mode
@@ -43,11 +46,15 @@ def _env(cfg: DeployConfig, tag: str | None) -> dict[str, str]:
 
 def up(cfg: DeployConfig, tag: str) -> None:
     require_local_docker()
-    if not build_mod.image_exists(cfg, tag):
+    missing = build_mod.missing_images(cfg, tag)
+    if missing:
         raise SystemExit(
-            f"{cfg.image_ref(tag)} is not on {cfg.host}. Build it first "
+            f"{', '.join(missing)} not on {cfg.host}. Build it first "
             f"(`deploy-droplet deploy`), or pick a tag from `deploy-droplet images`."
         )
+    if not envfile.value(cfg, "ADMIN_SESSION_KEY"):
+        raise SystemExit("ADMIN_SESSION_KEY is not set, so the admin console would refuse "
+                         "to start. Run `deploy-droplet admin-password` first.")
     upload_file(cfg, cfg.repo_root / "deploy" / "caddy" / "Caddyfile", REMOTE_CADDYFILE)
     subprocess.run([*_base_args(cfg), "up", "-d", "--remove-orphans"],
                    env=_env(cfg, tag), check=True)
@@ -72,3 +79,26 @@ def logs(cfg: DeployConfig, *, follow: bool, tail: int) -> None:
 def ps(cfg: DeployConfig) -> None:
     require_local_docker()
     subprocess.run([*_base_args(cfg), "ps"], env=_env(cfg, None), check=True)
+
+
+def service_running(cfg: DeployConfig, service: str) -> bool:
+    require_local_docker()
+    result = subprocess.run(
+        [*_base_args(cfg), "ps", "--status", "running", "--quiet", service],
+        env=_env(cfg, None), capture_output=True, text=True,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def restart_service(cfg: DeployConfig, service: str) -> None:
+    require_local_docker()
+    subprocess.run([*_base_args(cfg), "restart", service], env=_env(cfg, None), check=True)
+
+
+def service_logs(cfg: DeployConfig, service: str, *, tail: int) -> str:
+    require_local_docker()
+    result = subprocess.run(
+        [*_base_args(cfg), "logs", "--no-color", "--tail", str(tail), service],
+        env=_env(cfg, None), capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return result.stdout + result.stderr

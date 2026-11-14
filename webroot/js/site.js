@@ -106,6 +106,10 @@
 
   function renderConfig(cfg) {
     if (cfg.siteName) $$("[data-site-name]").forEach((el) => { el.textContent = cfg.siteName; });
+    if (cfg.siteName || cfg.tagline) {
+      document.title = [cfg.siteName || "Bird Heaven", cfg.tagline].filter(Boolean).join(" — ");
+    }
+    if (cfg.intro) $("[data-tagline]").textContent = cfg.intro;
     if (cfg.location) $("[data-location]").textContent = ` · Filmed in ${cfg.location}`;
     if (cfg.paypalHostedButtonId) {
       $("[data-paypal-id]").value = cfg.paypalHostedButtonId;

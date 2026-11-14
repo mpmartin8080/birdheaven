@@ -1,0 +1,10 @@
+# The admin console's runtime dependencies. Like app/requirements.txt, ranges
+# rather than pins until a hashed lockfile is generated:
+#     pip-compile --generate-hashes admin/requirements.txt
+
+fastapi>=0.115,<1.0
+uvicorn>=0.30,<1.0
+itsdangerous>=2.2,<3.0      # signed session + challenge cookies
+argon2-cffi>=23.1,<26.0     # the recovery password
+webauthn>=2.2,<3.0          # passkeys -- same library as financesite
+boto3>=1.34,<2.0            # Spaces (S3 API)

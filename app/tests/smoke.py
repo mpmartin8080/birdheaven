@@ -25,7 +25,7 @@ def check(cond: bool, msg: str) -> None:
 
 
 def fresh_app(**env: str):
-    for k in ("CATALOG_URL", "MEDIA_BASE_URL", "PAYPAL_HOSTED_BUTTON_ID",
+    for k in ("CATALOG_URL", "SETTINGS_URL", "MEDIA_BASE_URL", "PAYPAL_HOSTED_BUTTON_ID",
               "LIVE_STATUS", "LIVE_KIND", "LIVE_URL"):
         os.environ.pop(k, None)
     os.environ.update(env)
@@ -79,6 +79,37 @@ def main() -> int:
         check("media-src 'self' blob:" in csp and "birds.nyc3.cdn.digitaloceanspaces.com" in csp
               and "live.example.com" in csp, "CSP includes media + live origins")
         check(c.get("/media/posters/x.svg").status_code == 404, "dev /media not mounted when MEDIA_BASE_URL set")
+
+    print("== site-settings.json overrides env defaults")
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "catalog.json").write_text('{"videos": []}', encoding="utf-8")
+        (Path(tmp) / "site-settings.json").write_text(json.dumps({
+            "siteName": "Feeder Live", "tagline": "Birds!", "intro": "Hello there.",
+            "paypalHostedButtonId": "XYZ789",
+            "live": {"status": "live", "kind": "iframe", "url": "https://embed.example.org/x",
+                     "title": "Platform cam"},
+        }), encoding="utf-8")
+        c = fresh_app(CATALOG_URL=str(Path(tmp) / "catalog.json"),
+                      PAYPAL_HOSTED_BUTTON_ID="ENVDEFAULT", SITE_NAME="Env Name")
+        conf = c.get("/api/config").json()
+        check(conf["siteName"] == "Feeder Live" and conf["intro"] == "Hello there.",
+              "name and intro come from the settings file")
+        check(conf["paypalHostedButtonId"] == "XYZ789", "PayPal id from file beats env")
+        live = c.get("/api/live").json()
+        check(live == {"status": "live", "kind": "iframe", "url": "https://embed.example.org/x",
+                       "title": "Platform cam"}, "live stub driven by settings file")
+        csp = c.get("/").headers["content-security-policy"]
+        check("frame-src https://embed.example.org" in csp, "CSP frame-src follows the live embed")
+
+        (Path(tmp) / "site-settings.json").write_text(json.dumps({
+            "siteName": "", "paypalHostedButtonId": "bad id!", "live": {"url": "javascript:x"},
+        }), encoding="utf-8")
+        c = fresh_app(CATALOG_URL=str(Path(tmp) / "catalog.json"),
+                      PAYPAL_HOSTED_BUTTON_ID="ENVDEFAULT", SITE_NAME="Env Name")
+        conf = c.get("/api/config").json()
+        check(conf["siteName"] == "Env Name", "blank name falls back to env")
+        check(conf["paypalHostedButtonId"] == "ENVDEFAULT", "invalid PayPal id falls back to env")
+        check(c.get("/api/live").json()["status"] == "offline", "unsafe live URL ignored")
 
     print("== live misconfigured stays offline")
     c = fresh_app(LIVE_STATUS="live", LIVE_KIND="rtmp", LIVE_URL="rtmp://x")

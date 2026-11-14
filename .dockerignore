@@ -10,3 +10,6 @@ tools
 dev
 publish-out
 *.md
+admin/tests
+.admin-data
+**/.admin-data

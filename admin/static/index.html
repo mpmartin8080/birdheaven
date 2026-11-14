@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Bird Heaven admin</title>
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/css/admin.css">
+  <script type="module" src="/js/admin.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap">
+      <div class="topbar-inner">
+        <a class="brand" href="/">
+          <img src="/img/favicon.svg" alt="">
+          <span class="brand-name">Bird Heaven</span>
+          <span class="brand-tag">Admin</span>
+        </a>
+        <div class="topbar-actions">
+          <a class="btn btn-sm" href="/" target="_blank" rel="noopener" data-public-link>View site ↗</a>
+          <button class="btn btn-sm" type="button" data-signout>Sign out</button>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab" role="tab" data-tab="clips" aria-selected="true">Clips<span class="count" data-clip-count></span></button>
+        <button class="tab" role="tab" data-tab="upload" aria-selected="false">Upload</button>
+        <button class="tab" role="tab" data-tab="settings" aria-selected="false">Site settings</button>
+        <button class="tab" role="tab" data-tab="passkeys" aria-selected="false">Passkeys</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="notice warn" data-password-banner hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+      <div>
+        <p><strong>You're signed in with the recovery password.</strong> <span data-password-banner-text></span></p>
+      </div>
+    </div>
+
+    <!-- ============================== CLIPS ============================== -->
+    <section data-panel="clips" role="tabpanel">
+      <div class="section-head">
+        <div>
+          <h1>Clips</h1>
+          <p class="muted small" data-storage-note></p>
+        </div>
+        <div class="toolbar">
+          <input type="text" placeholder="Search title or species" data-search aria-label="Search clips">
+          <button class="btn btn-primary" type="button" data-goto="upload">+ Upload a clip</button>
+        </div>
+      </div>
+      <ul class="clip-list" data-clip-list></ul>
+      <p class="empty" data-clip-empty hidden>No clips yet. Upload the first one.</p>
+    </section>
+
+    <!-- ============================== UPLOAD ============================== -->
+    <section data-panel="upload" role="tabpanel" hidden>
+      <div class="section-head">
+        <div>
+          <h1>Upload a clip</h1>
+          <p class="muted small">MP4, MOV, MKV or WebM. H.264 clips publish in seconds; other formats are converted, which takes longer.</p>
+        </div>
+      </div>
+      <form class="panel" data-upload-form>
+        <label class="drop" data-drop>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m-5 5l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+          <strong>Drop a video here, or click to choose</strong>
+          <span class="muted small">Up to <span data-max-mb>4096</span> MB</span>
+          <input type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.m4v" data-file hidden>
+        </label>
+        <div class="file-chosen" data-chosen hidden>
+          <span><strong data-chosen-name></strong> <span class="muted small" data-chosen-size></span></span>
+          <button class="btn btn-sm" type="button" data-clear-file>Change</button>
+        </div>
+        <div class="form-grid" data-mt data-upload-fields>
+          <label class="field span-2">Title
+            <input type="text" name="title" maxlength="120" required placeholder="Cardinal pair at the platform feeder">
+          </label>
+          <label class="field">Species <span class="hint">Comma-separated</span>
+            <input type="text" name="species" list="species-list" placeholder="Northern Cardinal, Blue Jay">
+          </label>
+          <label class="field">Recorded <span class="hint">Defaults to the file's date</span>
+            <input type="datetime-local" name="recorded">
+          </label>
+          <label class="field span-2">Description <span class="hint">Optional</span>
+            <textarea name="description" maxlength="1000" rows="3"></textarea>
+          </label>
+          <label class="check span-2"><input type="checkbox" name="featured"> Feature this clip (shown when the live camera is offline)</label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit" data-upload-btn disabled>Upload and publish</button>
+        </div>
+      </form>
+
+      <div class="section-head"><h2>Recent uploads</h2></div>
+      <ul class="jobs" data-jobs></ul>
+      <p class="muted small" data-jobs-empty>Nothing uploaded in this session yet.</p>
+    </section>
+
+    <!-- ============================== SETTINGS ============================== -->
+    <section data-panel="settings" role="tabpanel" hidden>
+      <div class="section-head">
+        <div>
+          <h1>Site settings</h1>
+          <p class="muted small">Changes reach the public site within about a minute. No deploy needed.</p>
+        </div>
+      </div>
+      <form class="panel" data-settings-form>
+        <div class="form-grid">
+          <fieldset class="span-2">
+            <legend>Front page</legend>
+            <div class="form-grid">
+              <label class="field">Site name
+                <input type="text" name="siteName" maxlength="80" required>
+              </label>
+              <label class="field">Tagline <span class="hint">Shown in the browser tab</span>
+                <input type="text" name="tagline" maxlength="200">
+              </label>
+              <label class="field span-2">Intro paragraph <span class="hint">Leave blank to keep the built-in text</span>
+                <textarea name="intro" maxlength="600" rows="3"></textarea>
+              </label>
+              <label class="field">Location <span class="hint">Footer: "Filmed in …"</span>
+                <input type="text" name="location" maxlength="80">
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset class="span-2">
+            <legend>Donations</legend>
+            <label class="field">PayPal hosted button ID
+              <span class="hint">From PayPal → Accept Donations → Donate button. Leave blank to hide the donate panel.</span>
+              <input type="text" name="paypalHostedButtonId" maxlength="64" pattern="[A-Za-z0-9_\-]*" autocomplete="off">
+            </label>
+          </fieldset>
+
+          <fieldset class="span-2">
+            <legend>Live camera</legend>
+            <div class="form-grid">
+              <label class="field">Status
+                <select name="live.status">
+                  <option value="offline">Offline — show the "resting" card</option>
+                  <option value="live">Live</option>
+                </select>
+              </label>
+              <label class="field">Stream type
+                <select name="live.kind">
+                  <option value="">Not set</option>
+                  <option value="hls">HLS playlist (.m3u8)</option>
+                  <option value="video">Plain video URL</option>
+                  <option value="iframe">Embed (YouTube Live, Owncast…)</option>
+                </select>
+              </label>
+              <label class="field span-2">Stream URL
+                <input type="url" name="live.url" maxlength="2000" placeholder="https://…">
+              </label>
+              <label class="field">Player caption
+                <input type="text" name="live.title" maxlength="80">
+              </label>
+            </div>
+          </fieldset>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="reset" data-settings-reset>Undo changes</button>
+          <button class="btn btn-primary" type="submit">Save settings</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============================== PASSKEYS ============================== -->
+    <section data-panel="passkeys" role="tabpanel" hidden>
+      <div class="section-head">
+        <div>
+          <h1>Passkeys</h1>
+          <p class="muted small">Register a passkey on each device you manage the site from — a phone and a laptop is a good pair.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <ul class="keys" data-keys></ul>
+        <p class="muted" data-keys-empty hidden>No passkeys yet.</p>
+        <form class="add-key" data-add-key data-mt>
+          <label class="field">Name for the new passkey
+            <input type="text" name="nickname" maxlength="60" placeholder="e.g. iPhone, work laptop" required>
+          </label>
+          <button class="btn btn-primary" type="submit">Add a passkey</button>
+        </form>
+        <p class="notice error small" data-passkey-unsupported hidden>This browser cannot create passkeys.</p>
+      </div>
+      <div class="notice info small">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+        <p>Lost every passkey? On your workstation set <code>ADMIN_PASSWORD_LOGIN=true</code> in
+          <code>deploy/.env.prod</code>, run <code>deploy-droplet up</code>, sign in with the recovery
+          password and register a new one. Then set it back to <code>false</code> and run
+          <code>deploy-droplet up</code> again.</p>
+      </div>
+    </section>
+  </main>
+
+  <datalist id="species-list" data-species></datalist>
+
+  <!-- Edit clip -->
+  <dialog data-edit-dialog aria-labelledby="edit-title">
+    <form class="dialog-body" data-edit-form>
+      <div class="dialog-head">
+        <h2 id="edit-title">Edit clip</h2>
+        <button class="btn btn-icon" type="button" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="preview"><video controls playsinline preload="metadata" data-edit-video></video></div>
+      <div class="poster-row">
+        <label class="field">Poster at (s)
+          <input type="number" min="0" step="0.1" name="posterAt">
+        </label>
+        <button class="btn btn-sm" type="button" data-use-frame>Use current frame</button>
+        <button class="btn btn-sm" type="button" data-regen-poster>Set poster</button>
+        <span class="muted small" data-poster-status></span>
+      </div>
+      <div class="form-grid">
+        <label class="field span-2">Title <input type="text" name="title" maxlength="120" required></label>
+        <label class="field">Species <span class="hint">Comma-separated</span>
+          <input type="text" name="species" list="species-list"></label>
+        <label class="field">Recorded <input type="datetime-local" name="recorded"></label>
+        <label class="field span-2">Description <textarea name="description" maxlength="1000" rows="3"></textarea></label>
+        <label class="check span-2"><input type="checkbox" name="featured"> Featured</label>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-danger" type="button" data-delete-from-edit>Delete…</button>
+        <span class="grow"></span>
+        <button class="btn" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Confirm delete -->
+  <dialog class="confirm" data-delete-dialog aria-labelledby="delete-title">
+    <form class="dialog-body" method="dialog" data-delete-form>
+      <h2 id="delete-title">Delete this clip?</h2>
+      <p class="muted" data-delete-name></p>
+      <label class="check"><input type="checkbox" name="deleteFiles" checked> Also delete the video and poster from storage</label>
+      <p class="muted small">Unticked, the clip only disappears from the site; its files stay in the bucket.</p>
+      <div class="form-actions">
+        <button class="btn" value="cancel">Cancel</button>
+        <button class="btn btn-danger solid" value="delete">Delete</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" role="status" aria-live="polite" data-toast hidden></div>
+</body>
+</html>

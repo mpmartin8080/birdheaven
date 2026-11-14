@@ -1,7 +1,7 @@
 """One-time (idempotent) setup of a fresh Debian 13 droplet.
 
 Installs Docker Engine from Docker's own apt repository if it is missing, and
-opens the firewall for SSH, :80 and the HTTPS port. Simpler than financesite's:
+opens the firewall for SSH, :80, the HTTPS port and the admin port. Simpler than financesite's:
 there is no Volume to check and no data directories to own, because video lives
 in Spaces and Caddy's certificates live in a named Docker volume.
 """
@@ -32,7 +32,7 @@ else
 fi
 systemctl enable --now docker
 
-echo "==> Firewall (ufw): allow SSH, :80 and :{https_port}"
+echo "==> Firewall (ufw): allow SSH, :80, :{https_port} and the admin console on :{admin_port}"
 if ! command -v ufw >/dev/null 2>&1; then
     apt-get update
     apt-get install -y ufw
@@ -40,6 +40,7 @@ fi
 ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow {https_port}/tcp
+ufw allow {admin_port}/tcp
 ufw --force enable
 
 install -d -m 0755 /opt/birdheaven
@@ -49,4 +50,4 @@ echo "==> Done. docker: $(docker --version); compose: $(docker compose version -
 
 
 def bootstrap(cfg: DeployConfig) -> None:
-    run_script(cfg, _SCRIPT.format(https_port=cfg.https_port))
+    run_script(cfg, _SCRIPT.format(https_port=cfg.https_port, admin_port=cfg.admin_port))

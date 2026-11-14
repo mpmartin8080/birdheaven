@@ -2,11 +2,18 @@
 #
 #     cd app
 #     docker compose up --build
-#     open http://localhost:8000
+#     open http://localhost:8000          the public site
+#     open http://localhost:8001          the admin console
 #
-# With no CATALOG_URL, the service reads ../dev/catalog.json -- but that path
-# is outside the image, so this file mounts dev/ in for local use. To try the
-# real bucket locally, set CATALOG_URL in app/.env.
+# Both use ../dev/media as the "bucket" (it mirrors the Spaces layout), so
+# clips uploaded in the local admin console appear on the local site.
+#
+# The admin console needs app/.env with at least:
+#     ADMIN_SESSION_KEY=<48+ random characters>
+#     ADMIN_PASSWORD_LOGIN=true
+#     ADMIN_PASSWORD_HASH=<from: py -3 -m birdadmin.hashpw, run in admin/>
+# In THIS file only, double every `$` in the hash ($$argon2id$$v=19$$...):
+# Compose interpolates env_file values. deploy/.env.prod needs no escaping.
 
 name: birdheaven
 
@@ -19,9 +26,30 @@ services:
       - path: .env
         required: false
     environment:
-      CATALOG_URL: ${CATALOG_URL:-/srv/dev/catalog.json}
+      CATALOG_URL: ${CATALOG_URL:-/srv/dev/media/catalog.json}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
     volumes:
       - ../dev:/srv/dev:ro
+
+  admin:
+    build:
+      context: ..
+      dockerfile: admin/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ADMIN_LOCAL_STORAGE_DIR: /srv/dev/media
+      ADMIN_COOKIE_SECURE: "false"
+      PUBLIC_SITE_URL: http://localhost:8000/
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8001:8000"
+    volumes:
+      - ../dev:/srv/dev
+      - admin-data:/data
+
+volumes:
+  admin-data:

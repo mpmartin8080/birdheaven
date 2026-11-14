@@ -1,10 +1,19 @@
 # TLS termination for Bird Heaven. Same structure as financesite's Caddyfile
-# (read its header for the full story on the port variables and PORT80_MODE),
-# minus the Plaid webhook port.
+# (read its header for the full story on the port variables and PORT80_MODE).
+# Like financesite's Plaid webhook port, the admin console gets a port of its
+# own on the same hostname, rather than a hostname of its own.
+#
+# ONE CERTIFICATE. Every site block below names the same hostname, and a TLS
+# certificate is issued for a hostname, never a port -- so Caddy's automatic
+# HTTPS obtains one Let's Encrypt certificate for {$SITE_DOMAIN} (HTTP-01 on
+# :80, or TLS-ALPN on the HTTPS port) and serves it on both {$HTTPS_PORT} and
+# {$ADMIN_PORT}. The admin port is never used for validation, so it can be
+# firewalled to your own IP. See deploy/tls.py and `deploy-droplet cert`.
 #
 #   redirect     -- :80 only 301s to HTTPS. The permanent setting.
-#   passthrough  -- :80 serves the site in plain HTTP. Bring-up only, before
-#                   DNS and the certificate work. ACME keeps working either way.
+#   passthrough  -- :80 serves the public site in plain HTTP. Bring-up only,
+#                   before DNS and the certificate work. The admin console is
+#                   HTTPS-only on {$ADMIN_PORT} whatever this says.
 
 {
 	admin off
@@ -32,4 +41,32 @@ http://{$SITE_DOMAIN} {
 	#   }
 
 	reverse_proxy web:8000
+}
+
+# The admin console, on its own port. A different port is a different origin,
+# so the browser keeps the public site's pages from reading anything here, and
+# the console rejects any state-changing request whose Origin isn't exactly
+# https://{$SITE_DOMAIN}:{$ADMIN_PORT} (admin/birdadmin/auth.py). Sign-in is
+# the app's job (passkeys) -- nothing here bypasses it.
+{$SITE_DOMAIN}:{$ADMIN_PORT} {
+	header Strict-Transport-Security "max-age=31536000"
+
+	# Video uploads stream through here. Uploads are capped by the app
+	# (ADMIN_MAX_UPLOAD_MB, default 4096); this is a backstop above that.
+	request_body {
+		max_size 5GB
+	}
+
+	# Don't compress the upload/clip API (video is already compressed); do
+	# compress the console's own HTML/CSS/JS.
+	@assets not path /api/*
+	encode @assets zstd gzip
+
+	reverse_proxy admin:8000 {
+		# A large upload can take a while on a home connection.
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+	}
 }

@@ -1,3 +1,5 @@
-# The deploy CLI itself uses only the standard library (plus `docker`, `ssh`
-# and optionally `doctl` / `op` on PATH). tools/publish.py needs boto3 -- see
-# tools/requirements.txt.
+# Workstation-only. The deploy CLI is otherwise standard library (plus
+# `docker`, `ssh` and optionally `op` on PATH). tools/publish.py needs boto3 --
+# see tools/requirements.txt.
+#     py -3 -m pip install -r deploy\requirements.txt
+argon2-cffi>=23.1,<26.0     # deploy-droplet admin-password hashes the recovery password

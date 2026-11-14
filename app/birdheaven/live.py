@@ -1,12 +1,13 @@
 """Live video status -- a deliberate stub.
 
 The streaming protocol has not been chosen yet (see ARCHITECTURE.md, "Live
-video"). Until it is, the status is whatever the environment says:
+video"). Until it is, the status is whatever the site settings say -- set in
+the admin console, or by the LIVE_* environment defaults:
 
-    LIVE_STATUS   offline (default) | live
-    LIVE_KIND     hls | video | iframe
-    LIVE_URL      the playlist / file / embed URL
-    LIVE_TITLE    shown above the player
+    status   offline (default) | live
+    kind     hls | video | iframe
+    url      the playlist / file / embed URL
+    title    shown under the player
 
 The front end only ever reads the dict returned by `status()`, so replacing this
 function with a real probe of an ingest server (MediaMTX's API, Owncast's
@@ -17,16 +18,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import Config
-
-KINDS = {"hls", "video", "iframe"}
+from .sitesettings import LIVE_KINDS
 
 
-def status(cfg: Config) -> dict[str, Any]:
-    live = cfg.live_status == "live" and cfg.live_kind in KINDS and bool(cfg.live_url)
+def status(settings: dict[str, Any]) -> dict[str, Any]:
+    live = settings["live"]
+    on = live["status"] == "live" and live["kind"] in LIVE_KINDS and bool(live["url"])
     return {
-        "status": "live" if live else "offline",
-        "kind": cfg.live_kind if live else None,
-        "url": cfg.live_url if live else None,
-        "title": cfg.live_title,
+        "status": "live" if on else "offline",
+        "kind": live["kind"] if on else None,
+        "url": live["url"] if on else None,
+        "title": live["title"],
     }

@@ -11,7 +11,12 @@
 #     registry to pull from; a missing tag is an error, never a download.
 #   * No dev/ mount and no published port on `web`; only Caddy is published.
 #   * Site settings (catalog, media origin, PayPal, live stub) come from
-#     deploy/.env.prod. None of them is a secret.
+#     deploy/.env.prod as *defaults*; the admin console's Site settings page
+#     overrides them at runtime via site-settings.json in the bucket.
+#   * `admin` is the only service holding secrets (session key, recovery
+#     password hash, Spaces key). Caddy serves it on the site's hostname at
+#     its own port (BIRD_DEPLOY_ADMIN_PORT, default 7777) -- the admin
+#     container itself publishes nothing.
 #
 # FUTURE: when a live streaming server is chosen, it goes here as another
 # service (e.g. bluenviron/mediamtx), with its ingest port published and its
@@ -39,25 +44,57 @@ services:
       LIVE_TITLE: ${LIVE_TITLE:-Feeder cam}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
+  admin:
+    build: !reset null
+    image: ${BIRD_ADMIN_IMAGE:-birdheaven-admin}:${IMAGE_TAG:-latest}
+    pull_policy: never
+    restart: unless-stopped
+    ports: !reset null
+    env_file: !reset null
+    # !override, not a merge: the base file's dev-only values (local storage,
+    # insecure cookies) must not survive into production.
+    environment: !override
+      ADMIN_SESSION_KEY: ${ADMIN_SESSION_KEY:-}
+      ADMIN_PASSWORD_LOGIN: ${ADMIN_PASSWORD_LOGIN:-false}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      ADMIN_COOKIE_SECURE: "true"
+      SPACES_KEY: ${SPACES_KEY:-}
+      SPACES_SECRET: ${SPACES_SECRET:-}
+      SPACES_BUCKET: ${SPACES_BUCKET:-birdheaven}
+      SPACES_REGION: ${SPACES_REGION:-nyc3}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-}
+      PUBLIC_SITE_URL: ${BIRD_SITE_ORIGIN}/
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes: !override
+      # Passkeys (public keys only) and the upload work area. Losing it costs
+      # re-registering a passkey via the recovery password, nothing more.
+      - admin-data:/data
+
   caddy:
     # Same pinned image as financesite.
     image: caddy:2.9.1@sha256:748016f285ed8c43a9ce6e3aed6d92d3009d90ca41157950880f40beaf3ff62b
     restart: unless-stopped
     depends_on:
       - web
+      - admin
     environment:
       SITE_DOMAIN: ${BIRD_SITE_DOMAIN}
+      ADMIN_PORT: ${BIRD_ADMIN_PORT}
       HTTPS_PORT: ${BIRD_HTTPS_PORT}
       HTTPS_PORT_SUFFIX: ${BIRD_HTTPS_PORT_SUFFIX:-}
       PORT80_MODE: ${BIRD_PORT80_MODE}
     ports:
       - "80:80"
       - "${BIRD_HTTPS_PORT}:${BIRD_HTTPS_PORT}"
+      # The admin console. Open this in the Cloud Firewall -- to your own IP
+      # if you can; unlike 80/443, Let's Encrypt never needs to reach it.
+      - "${BIRD_ADMIN_PORT}:${BIRD_ADMIN_PORT}"
     volumes:
       - ${BIRD_CADDYFILE:-./caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
 
 volumes:
+  admin-data:
   # ACME account key and certificates. A named volume rather than a bind mount
   # on a DO Volume: losing it costs one certificate re-issue, nothing more.
   caddy-data:
