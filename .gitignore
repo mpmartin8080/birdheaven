@@ -15,3 +15,4 @@ HANDOFF.md
 
 # Admin console local state (passkeys, upload work area) when run outside Docker
 .admin-data/
+deploy/.env.prod.*

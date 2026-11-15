@@ -13,8 +13,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Source+Sans+3:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/css/site.css">
-  <script src="/js/site.js" defer></script>
+  <!-- Bump ?v= whenever site.css or site.js changes: they are cached for an hour. -->
+  <link rel="stylesheet" href="/css/site.css?v=2">
+  <script src="/js/site.js?v=2" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
@@ -176,8 +177,10 @@
           <h2 id="contact-title">Spotted something at the feeder?</h2>
           <p>Questions about a visitor, an ID we got wrong, or a clip you'd like to see more of — send a note.
             We read everything and reply when we can.</p>
-          <svg class="contact-feather" viewBox="0 0 64 64" aria-hidden="true">
-            <path d="M52 8C34 10 18 24 14 46l-4 10 8-6c20-2 34-18 34-42z"/>
+          <!-- Size and colours set as attributes too, so it stays small even before the stylesheet loads. -->
+          <svg class="contact-feather" viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"
+               fill="none" stroke="#3d5f48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path class="vane" d="M52 8C34 10 18 24 14 46l-4 10 8-6c20-2 34-18 34-42z" fill="#d7eef2" stroke="#7bbfcf"/>
             <path class="quill" d="M48 13L18 50M30 24l8 2M24 32l9 2M20 40l8 1"/>
           </svg>
         </div>

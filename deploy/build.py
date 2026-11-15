@@ -7,6 +7,7 @@ stay in the droplet's local image store, both tagged with the same git SHA:
 
     birdheaven-web:<sha>     app/Dockerfile    the public site
     birdheaven-admin:<sha>   admin/Dockerfile  the admin console
+    birdheaven-certs:<sha>   deploy/certs/Dockerfile  the SAN certificate (lego)
 
 `docker compose` then runs them from there with `pull_policy: never`. Every
 deployed tag stays on the droplet until pruned, so rolling back is just
@@ -21,7 +22,8 @@ from datetime import datetime, timezone
 from .config import DeployConfig
 from .ssh import docker_env, require_local_docker
 
-DOCKERFILES = {"web": "app/Dockerfile", "admin": "admin/Dockerfile"}
+DOCKERFILES = {"web": "app/Dockerfile", "admin": "admin/Dockerfile",
+               "certs": "deploy/certs/Dockerfile"}
 
 
 def git_tag() -> str:

@@ -285,8 +285,8 @@ h3 { font-size: 1.15rem; }
 .contact-copy h2 { margin-bottom: .6rem; }
 .contact-copy p { color: var(--ink-2); max-width: 30rem; }
 .contact-feather { width: 56px; height: 56px; margin-top: 1.2rem; }
-.contact-feather path { fill: var(--robin-soft); stroke: var(--robin); stroke-width: 2; stroke-linejoin: round; }
-.contact-feather .quill { fill: none; stroke: var(--moss); stroke-linecap: round; }
+.contact-feather .vane { fill: var(--robin-soft); stroke: var(--robin); }
+.contact-feather .quill { fill: none; stroke: var(--moss); }
 @media (max-width: 760px) { .contact-feather { display: none; } }
 
 .contact-form { display: grid; gap: 14px; }

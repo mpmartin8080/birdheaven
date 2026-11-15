@@ -13,9 +13,11 @@ the overall design.
 
 1. **Droplet.** Debian 13; the $6 Basic size is enough. Add your SSH key. Use a
    separate droplet from financesite; both stacks need ports 80 and 443.
-2. **DNS.** One A record for the site (e.g. `birdheaven.example.net`) pointing
-   at the droplet's IP. The admin console uses the same hostname on port 7777
-   (`https://birdheaven.example.net:7777/`), so it needs no record of its own.
+2. **DNS.** An A record pointing at the droplet's IP for every hostname in
+   `BIRD_DEPLOY_SITE_DOMAIN` (e.g. `birdheaven.example.net` and
+   `www.birdheaven.example.net`). The admin console uses the first hostname on
+   port 7777 (`https://birdheaven.example.net:7777/`), so it needs no record of
+   its own.
 3. **Spaces bucket.** Control panel → Spaces → Create bucket. Then:
    - Turn on **CDN** for the bucket.
    - Leave **file listing restricted**. Objects are made public one at a time.
@@ -39,7 +41,7 @@ the overall design.
 7. **Settings.**
    ```
    copy deploy\.env.example deploy\.env.prod
-   notepad deploy\.env.prod          (host, domain, CATALOG_URL, SPACES_* keys, SMTP_*)
+   notepad deploy\.env.prod          (host, domain(s), ACME email, CATALOG_URL, SPACES_* keys, SMTP_*)
    deploy-droplet admin-password --enable
    deploy-droplet check
    ```
@@ -93,30 +95,58 @@ The admin console is always HTTPS-only.
 
 ## TLS
 
-Same mechanism as financesite: **Caddy's automatic HTTPS** with Let's Encrypt.
-Naming the site's hostname in `deploy/caddy/Caddyfile` is the whole request.
-Caddy obtains **one** certificate on start, over HTTP-01 on `:80` (falling
-back to TLS-ALPN on `:443`), stores it in the `caddy-data` volume, renews it
-automatically, and serves it on both `:443` and the admin port `:7777`. A
-certificate is issued for a hostname, never a port, which is also why 7777
-needs no exposure to Let's Encrypt.
+**One Let's Encrypt certificate with every hostname as a SAN.** List the
+names in `BIRD_DEPLOY_SITE_DOMAIN`, comma-separated, primary first. The
+others redirect to the primary, on HTTP and HTTPS. Caddy's own automatic
+HTTPS (financesite's mechanism) can only issue one certificate per name, so a
+small `certs` service does the issuing:
+
+- It runs **lego**, an ACME client, and requests the certificate over HTTP-01.
+  It writes each challenge file into a shared volume, which Caddy serves on
+  `:80` for every hostname.
+- It installs the result in the `certs` volume. Caddy loads it on `:443` and
+  on the admin port `:7777`, and reloads itself within 30 s whenever the file
+  changes. No restart is needed.
+- It checks twice a day and renews within 30 days of expiry. On failure it
+  backs off from 15 minutes to 6 hours, well inside Let's Encrypt's limits.
+- On a brand-new droplet it first installs a 7-day self-signed placeholder,
+  so Caddy can start. Until the real certificate arrives, browsers warn.
+- If you change the hostname list and run `deploy-droplet up`, a new
+  certificate covering the new list is requested automatically.
+
+A certificate is issued for hostnames, never ports, which is why 7777 needs no
+exposure to Let's Encrypt.
 
 ```
-deploy-droplet cert              get the certificate and verify it on both ports (waits up to 180 s)
+deploy-droplet cert              get the certificate and verify it everywhere (waits up to 180 s)
 deploy-droplet cert --wait 600
 ```
 
-`cert` checks that the hostname resolves to the droplet and that Caddy is
-running, restarts Caddy so issuance starts now, and waits until `:443` serves
-a publicly trusted certificate, showing the issuer and expiry. It then checks
-that `:7777` serves the same certificate; if it can't connect there, the
-cause is the firewall, not Let's Encrypt, and it says so. On failure it prints
-Caddy's ACME log and names the known failure modes: firewall, rate limit, DNS.
-`deploy` runs the same check without failing, and `status` shows both ports.
+`cert` runs these checks, in order:
+
+1. Every hostname resolves to the droplet.
+2. `:80` is open.
+3. The challenge path works end to end for each name. It drops a test token
+   into the webroot and fetches `http://<name>/.well-known/acme-challenge/<token>`,
+   exactly as Let's Encrypt will.
+4. It restarts the certs service so issuance starts now.
+5. It waits until a publicly trusted certificate covering **all** the names
+   is served, and shows its names, issuer and expiry.
+6. It checks each alias and `:7777`. If it can't connect to `:7777`, the cause
+   is the firewall, not Let's Encrypt, and it says so.
+
+On failure it prints the certs log and names the known failure modes:
+firewall, rate limit, DNS, a name pointing elsewhere. `deploy` runs the same
+check without failing, and `status` shows every hostname and port.
+
+`BIRD_DEPLOY_ACME_EMAIL` is required: the ACME client won't register an
+account without it. For a trial run that can't hit production rate limits,
+set `BIRD_DEPLOY_ACME_SERVER` to Let's Encrypt staging (see
+`.env.example`). Remove it again for a trusted certificate.
 
 **Requirements Let's Encrypt imposes:**
 
-- The A record must point at the droplet.
+- Every hostname's A record must point at the droplet.
 - **Ports 80 and 443 must be open to the whole internet**, not just your IP. A
   firewall restricted to your own IP is the classic failure: the site works
   from home while Caddy logs `Timeout during connect (likely firewall
@@ -167,7 +197,10 @@ log. Read them with `deploy-droplet logs web`. To get real email:
      their host, `SMTP_PORT=2525`, their credentials, and a `CONTACT_FROM`
      address you have verified with them.
 2. Run `deploy-droplet up`, then send yourself a test message from the site.
-   If it fails, `deploy-droplet logs web` shows the SMTP error.
+   If it fails, `deploy-droplet logs web` shows the SMTP error, what it
+   usually means, and the undelivered message, so nothing is lost. A timeout
+   or `Network is unreachable` means the port is blocked; that happens before
+   the password is ever tried.
 
 ## Access logs
 

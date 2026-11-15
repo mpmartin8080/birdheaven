@@ -1,14 +1,30 @@
 # TLS termination for Bird Heaven. Same structure as financesite's Caddyfile
 # (read its header for the full story on the port variables and PORT80_MODE).
 # Like financesite's Plaid webhook port, the admin console gets a port of its
-# own on the same hostname, rather than a hostname of its own.
+# own on the primary hostname, rather than a hostname of its own.
 #
-# ONE CERTIFICATE. Every site block below names the same hostname, and a TLS
-# certificate is issued for a hostname, never a port -- so Caddy's automatic
-# HTTPS obtains one Let's Encrypt certificate for {$SITE_DOMAIN} (HTTP-01 on
-# :80, or TLS-ALPN on the HTTPS port) and serves it on both {$HTTPS_PORT} and
-# {$ADMIN_PORT}. The admin port is never used for validation, so it can be
-# firewalled to your own IP. See deploy/tls.py and `deploy-droplet cert`.
+# HOSTNAMES. BIRD_DEPLOY_SITE_DOMAIN may list several, comma-separated. The
+# first is the PRIMARY: the public site and the admin console live there. The
+# others are ALIASES that permanently redirect to it, on :80 and on HTTPS.
+# deploy/compose_ops.py turns the list into the address lists below:
+#   {$SITE_DOMAIN}          primary hostname
+#   {$SITE_HTTP_ADDRESSES}  "http://a, http://b"
+#   {$SITE_HTTPS_ADDRESSES} "a:443, b:443"
+# (Caddyfile env placeholders may expand to several tokens, so one site block
+# covers every name.)
+#
+# ONE CERTIFICATE, with every hostname as a SAN. Caddy's own automatic HTTPS
+# can only issue one certificate per name, so issuance is done by the `certs`
+# service (lego; deploy/certs/certs.sh), and Caddy just serves the result:
+#   * certs writes HTTP-01 challenge files into the shared `acme-webroot`
+#     volume, which every :80 block below serves at /.well-known/acme-challenge/
+#     (ahead of the redirect).
+#   * certs installs /certs/site.crt + site.key (the `certs` volume, read-only
+#     here), which every HTTPS block loads.
+#   * deploy/caddy/run.sh reloads Caddy when the certificate file changes.
+# Port 80 must be open to the whole internet for validation; the admin port
+# never is used for it, so it can be firewalled to your own IP. See
+# deploy/tls.py and `deploy-droplet cert`.
 #
 #   redirect     -- :80 only 301s to HTTPS. The permanent setting.
 #   passthrough  -- :80 serves the public site in plain HTTP. Bring-up only,
@@ -16,7 +32,12 @@
 #                   HTTPS-only on {$ADMIN_PORT} whatever this says.
 
 {
-	admin off
+	# The admin API listens on loopback INSIDE the caddy container only --
+	# unreachable from the other containers -- for run.sh's reloads.
+	admin localhost:2019
+	# Certificates come from the certs service, never from Caddy itself.
+	# (HTTP->HTTPS redirects are configured explicitly below.)
+	auto_https off
 }
 
 (redirect) {
@@ -25,6 +46,10 @@
 
 (passthrough) {
 	reverse_proxy web:8000
+}
+
+(site_tls) {
+	tls /certs/site.crt /certs/site.key
 }
 
 # ACCESS LOGS, read by the admin console's Logs tab (admin/birdadmin/
@@ -44,15 +69,31 @@
 	}
 }
 
-http://{$SITE_DOMAIN} {
+{$SITE_HTTP_ADDRESSES} {
 	import access_log site
-	import {$PORT80_MODE}
+
+	# Let's Encrypt's HTTP-01 challenge, for every hostname, in either mode.
+	handle /.well-known/acme-challenge/* {
+		root * /srv/acme
+		file_server
+	}
+
+	handle {
+		import {$PORT80_MODE}
+	}
 }
 
-{$SITE_DOMAIN}:{$HTTPS_PORT} {
+{$SITE_HTTPS_ADDRESSES} {
 	import access_log site
-	encode zstd gzip
+	import site_tls
 	header Strict-Transport-Security "max-age=31536000"
+
+	# Aliases: one canonical address for links, search engines, and the
+	# contact form's same-origin check.
+	@alias not host {$SITE_DOMAIN}
+	redir @alias https://{$SITE_DOMAIN}{$HTTPS_PORT_SUFFIX}{uri} permanent
+
+	encode zstd gzip
 
 	# FUTURE live stream route, once a streaming server exists, e.g.:
 	#   handle_path /live/* {
@@ -62,13 +103,15 @@ http://{$SITE_DOMAIN} {
 	reverse_proxy web:8000
 }
 
-# The admin console, on its own port. A different port is a different origin,
-# so the browser keeps the public site's pages from reading anything here, and
-# the console rejects any state-changing request whose Origin isn't exactly
-# https://{$SITE_DOMAIN}:{$ADMIN_PORT} (admin/birdadmin/auth.py). Sign-in is
-# the app's job (passkeys) -- nothing here bypasses it.
+# The admin console, on its own port of the primary hostname. A different port
+# is a different origin, so the browser keeps the public site's pages from
+# reading anything here, and the console rejects any state-changing request
+# whose Origin isn't exactly https://{$SITE_DOMAIN}:{$ADMIN_PORT}
+# (admin/birdadmin/auth.py). Sign-in is the app's job (passkeys) -- nothing
+# here bypasses it.
 {$SITE_DOMAIN}:{$ADMIN_PORT} {
 	import access_log admin
+	import site_tls
 	header Strict-Transport-Security "max-age=31536000"
 
 	# Video uploads stream through here. Uploads are capped by the app

@@ -157,6 +157,21 @@ def deliver(cfg: Config, msg: EmailMessage) -> None:
         server.send_message(msg)
 
 
+def _hint(err: OSError) -> str:
+    """What a delivery error usually means, for the operator reading the log."""
+    if isinstance(err, smtplib.SMTPAuthenticationError):
+        return (" -- the server rejected SMTP_USERNAME/SMTP_PASSWORD (for Gmail: a 16-letter"
+                " app password, no spaces, with 2-Step Verification on)")
+    if not isinstance(err, smtplib.SMTPException):
+        # Could not even connect. A timeout over IPv4 followed by "Network is
+        # unreachable" (the IPv6 fallback; containers have no IPv6) is the
+        # signature of DigitalOcean's outbound SMTP block.
+        return (" -- could not connect. DigitalOcean blocks outbound ports 25, 465 and 587"
+                " on new droplets: ask DO support to lift it, or use a relay on port 2525"
+                " (deploy/README.md, 'Contact form email'). The undelivered message follows")
+    return " -- the undelivered message follows"
+
+
 def handle(cfg: Config, site_name: str, body: dict, client_ip: str) -> None:
     """Validate and send one submission. Raises ContactError for the visitor."""
     fields = validate(body)
@@ -172,8 +187,9 @@ def handle(cfg: Config, site_name: str, body: dict, client_ip: str) -> None:
     msg = build_message(cfg, site_name, name, email, message, client_ip)
     try:
         deliver(cfg, msg)
-    except (OSError, smtplib.SMTPException) as err:
-        log.error("contact form: sending via %s:%s failed: %s", cfg.smtp_host, cfg.smtp_port, err)
+    except OSError as err:  # smtplib.SMTPException is an OSError too
+        log.error("contact form: sending via %s:%s failed: %s%s\n%s", cfg.smtp_host, cfg.smtp_port,
+                  err, _hint(err), msg.as_string())
         raise ContactError("Sorry, your message couldn't be sent just now. Please try again later.",
                            502) from None
     log.info("contact form: message from %s delivered to %s", client_ip,

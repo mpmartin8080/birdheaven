@@ -8,7 +8,7 @@ passkey-protected admin console.
                          ┌──────────────────────── DigitalOcean ─────────────────────────┐
                          │  Droplet (Debian 13 + Docker)                                  │
   visitor's browser      │  ┌──────────────────────────────────────────────────────────┐ │
-   https://<domain>/ ────┼─▶│ caddy :80 :443 :7777  (one Let's Encrypt cert)           │ │
+   https://<domain>/ ────┼─▶│ caddy :80 :443 :7777  (one SAN cert <- certs: lego)      │ │
                          │  │   ├─ <domain>:443    ─▶ web :8000   (FastAPI, no secrets)│ │
   owner's browser        │  │   │                      /, /api/videos, /api/live, ...  │ │
    https://<dom>:7777/ ──┼─▶│   └─ <domain>:7777   ─▶ admin :8000 (FastAPI + ffmpeg)   │ │
@@ -21,7 +21,7 @@ passkey-protected admin console.
         │  <video src>   │  Spaces bucket ──▶ Spaces CDN                                  │
         └────────────────┼─▶  catalog.json, site-settings.json                           │
    (visitors too)        │    videos/YYYY/MM/<slug>.mp4, posters/YYYY/MM/<slug>.jpg       │
-                         │  (no registry: both images built on the droplet over SSH)      │
+                         │  (no registry: all images built on the droplet over SSH)       │
                          └────────────────────────────────────────────────────────────────┘
                                            ▲
   owner's workstation (Windows) ───────────┘  deploy-droplet deploy   (code + config)
@@ -35,7 +35,8 @@ passkey-protected admin console.
 | `webroot/` | The public front page: plain HTML/CSS/JS, no build step | Baked into the `web` image |
 | `app/birdheaven/` | Public FastAPI service: page, catalog API, live-status stub, site settings overlay, contact form, security headers. Its only secret is the SMTP password. | `web` container |
 | `admin/birdadmin/` + `admin/static/` | Admin console: passkey sign-in, upload/edit/delete clips, regenerate posters, edit site settings, manage passkeys, view access logs | `admin` container, at `https://<domain>:7777/` |
-| Caddy | TLS on :443 and :7777 (one certificate), HTTP→HTTPS, compression, upload size backstop, JSON access logs for both sites | `caddy` container |
+| Caddy | TLS on :443 and :7777 with the one SAN certificate, alias→primary and HTTP→HTTPS redirects, ACME challenge webroot on :80, compression, upload size backstop, JSON access logs for both sites | `caddy` container |
+| `deploy/certs/` | lego (ACME client): one Let's Encrypt certificate with every site hostname as a SAN, renewed automatically | `certs` container |
 | Spaces + CDN | Videos, posters, `catalog.json`, `site-settings.json` | DigitalOcean Spaces |
 | `deploy/` | Workstation CLI: bootstrap, build both images on the droplet, `compose up`, certificates, rollback, prune, admin password | Your machine only |
 | `tools/publish.py` | Optional command-line publishing; same code as the admin console | Your machine only |
@@ -118,11 +119,44 @@ admin upload is the one race left, and it is unlikely with one owner.
 variable cost. 1 TiB/month is ~250,000 one-minute clip views; a DigitalOcean
 billing alert is the backstop (see `deploy/README.md`).
 
+## TLS: one certificate, every hostname a SAN
+
+`BIRD_DEPLOY_SITE_DOMAIN` lists the public hostnames, comma-separated. The
+first is the **primary**: the public site and the admin console live there.
+Every other name 301-redirects to it, on `:80` and on HTTPS. All of them go
+on **one** Let's Encrypt certificate as SANs.
+
+Caddy's automatic HTTPS (financesite's mechanism) always issues one
+certificate per hostname, so issuance moved to a `certs` container:
+
+1. `certs` runs lego with HTTP-01. lego writes each challenge into the shared
+   `acme-webroot` volume. Caddy serves `/.well-known/acme-challenge/` from it
+   on `:80` for every name, ahead of any redirect.
+2. lego installs `site.crt`/`site.key` in the `certs` volume, which Caddy
+   mounts read-only and serves on every HTTPS listener. Caddy's own automatic
+   HTTPS is off.
+3. Caddy's entrypoint (`deploy/caddy/run.sh`) reloads Caddy through its admin
+   API when the certificate file changes. That API listens on loopback inside
+   the caddy container, so other containers can't reach it. Renewals therefore
+   need no restart.
+4. **First boot:** `certs` writes a 7-day self-signed placeholder covering all
+   names. Caddy waits for the certs container's health check (the file exists),
+   starts, and then the real certificate replaces the placeholder.
+5. **Changing the hostname list** issues a fresh certificate: `certs` compares
+   the names it last installed with the configured list.
+6. **Renewal:** checked twice a day, within 30 days of expiry. Failures back
+   off from 15 minutes to 6 hours.
+
+`deploy-droplet cert` verifies all of this end to end (see
+`deploy/README.md`, TLS). The whole flow, including adding a hostname, was
+tested locally against Pebble, Let's Encrypt's test CA.
+
 ## Admin console
 
-A second container, served by Caddy on the site's own hostname and IP at
+A second container, served by Caddy on the site's primary hostname and IP at
 **port 7777** (`https://<domain>:7777/`; `BIRD_DEPLOY_ADMIN_PORT`). It uses
-the same certificate and needs no extra DNS. The port can be firewalled to the
+the same certificate and needs no extra DNS. Aliases don't serve it, since
+passkeys are bound to one hostname. The port can be firewalled to the
 owner's IP, since Let's Encrypt never needs to reach it.
 
 **What a separate port does and doesn't isolate.** A different port is a

@@ -1,4 +1,4 @@
-# Build context is the repo root; the image needs app/ and webroot/ only.
+# Build context is the repo root for all three images (web, admin, certs).
 .git
 **/__pycache__
 *.pyc
@@ -6,6 +6,8 @@
 *.env
 .env*
 deploy
+# ...except the certs image's script (deploy/certs/Dockerfile).
+!deploy/certs/certs.sh
 tools
 dev
 publish-out

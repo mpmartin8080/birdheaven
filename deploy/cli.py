@@ -19,13 +19,15 @@ Run from the repository root (or via deploy-droplet.bat). See deploy/README.md.
     images               Tags on the droplet, newest first (rollback targets).
     prune  [--keep N]    Delete all but the newest N tags (default 5).
     down                 Stop the stack.
-    logs   [-f] [--tail N]
+    logs   [-f] [--tail N] [SERVICE ...]   e.g. `logs web` (default: all)
     ps                   Container status.
-    cert   [--wait S]    Get the site's Let's Encrypt certificate (Caddy's
-                          automatic HTTPS, as in financesite) and verify it on
-                          both the site port and the admin port: checks DNS
-                          and :80, restarts Caddy to trigger issuance, waits
-                          for a trusted cert, shows its expiry.
+    cert   [--wait S]    Get the site's Let's Encrypt certificate -- one cert,
+                          every BIRD_DEPLOY_SITE_DOMAIN hostname as a SAN,
+                          issued by the `certs` service (lego) -- and verify it
+                          on every hostname and the admin port: checks DNS, :80
+                          and the challenge path for each name, restarts certs
+                          to trigger issuance, waits for a trusted cert
+                          covering all names, shows its expiry.
     status               SSH reachability, containers, TLS cert, /api/health.
 """
 
@@ -67,7 +69,13 @@ def _cmd_check(args):
     cfg = load()
     print(f"==> Settings in {cfg.env_file}")
     print(f"  {'BIRD_DEPLOY_HOST':28} {cfg.host or '(unset)'}")
-    print(f"  {'BIRD_DEPLOY_SITE_DOMAIN':28} {cfg.site_domain or '(unset)'}")
+    print(f"  {'BIRD_DEPLOY_SITE_DOMAIN':28} {cfg.site_domain or '(unset)'}"
+          + ("  (primary)" if cfg.alias_domains else ""))
+    for alias in cfg.alias_domains:
+        print(f"  {'':28} {alias}  (SAN on the certificate; redirects to {cfg.site_domain})")
+    print(f"  {'BIRD_DEPLOY_ACME_EMAIL':28} {cfg.acme_email or '(unset -- required for the certificate)'}")
+    if cfg.acme_server:
+        print(f"  {'BIRD_DEPLOY_ACME_SERVER':28} {cfg.acme_server}")
     print(f"  {'BIRD_DEPLOY_ADMIN_PORT':28} {cfg.admin_port}  ->  {cfg.admin_origin if cfg.site_domain else '(set the site domain)'}")
     print(f"  {'images':28} {', '.join(f'{n}:<tag>' for n in cfg.images.values())} "
           f"(on the droplet, no registry)")
@@ -124,7 +132,8 @@ def _cmd_deploy(args):
     # Non-fatal: the site is already up; a cert still pending is reported, not raised.
     tls.ensure(cfg, wait=120, strict=False)
     print(f"\ndeployed {tag} to {cfg.host}\n  site:  {cfg.site_origin}/\n"
-          f"  admin: {cfg.admin_origin}/")
+          + "".join(f"  alias: https://{d}{cfg.https_port_suffix}/ -> site\n" for d in cfg.alias_domains)
+          + f"  admin: {cfg.admin_origin}/")
 
 
 def _cmd_up(args):
@@ -155,7 +164,7 @@ def _cmd_down(args):
 
 
 def _cmd_logs(args):
-    compose_ops.logs(_docker_cfg(), follow=args.follow, tail=args.tail)
+    compose_ops.logs(_docker_cfg(), follow=args.follow, tail=args.tail, services=args.services)
 
 
 def _cmd_ps(args):
@@ -174,6 +183,8 @@ def _cmd_status(args):
         cert = tls.fetch_cert(cfg, domain, port)
         print(tls.describe(cert) if cert else
               "  no trusted certificate (or port unreachable) -- run `deploy-droplet cert`")
+        if cert and tls.missing_names(cfg, cert):
+            print(f"  missing: {', '.join(tls.missing_names(cfg, cert))} -- run `deploy-droplet cert`")
     for url in (f"{cfg.site_origin}/api/health", f"{cfg.admin_origin}/api/health"):
         print(f"\n==> GET {url}")
         try:
@@ -213,6 +224,7 @@ def main(argv: list[str] | None = None) -> int:
     logs_p = sub.add_parser("logs")
     logs_p.add_argument("--follow", "-f", action="store_true")
     logs_p.add_argument("--tail", type=int, default=200)
+    logs_p.add_argument("services", nargs="*", help="e.g. web, admin, caddy, certs (default: all)")
     logs_p.set_defaults(func=_cmd_logs)
     sub.add_parser("ps").set_defaults(func=_cmd_ps)
     sub.add_parser("status").set_defaults(func=_cmd_status)

@@ -83,15 +83,41 @@ services:
       # console can show them, never alter them.
       - caddy-logs:/logs:ro
 
+  # One Let's Encrypt certificate with every site hostname as a SAN (lego).
+  # See deploy/certs/certs.sh. Publishes nothing: Let's Encrypt's HTTP-01
+  # requests reach it through Caddy's :80 and the shared acme-webroot volume.
+  certs:
+    image: ${BIRD_CERTS_IMAGE:-birdheaven-certs}:${IMAGE_TAG:-latest}
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      DOMAINS: ${BIRD_SITE_DOMAINS}
+      ACME_EMAIL: ${BIRD_ACME_EMAIL:-}
+      ACME_SERVER: ${BIRD_ACME_SERVER:-}
+    volumes:
+      - certs:/certs
+      - acme-webroot:/acme
+
   caddy:
     # Same pinned image as financesite.
     image: caddy:2.9.1@sha256:748016f285ed8c43a9ce6e3aed6d92d3009d90ca41157950880f40beaf3ff62b
     restart: unless-stopped
+    # Runs Caddy and reloads it when certs installs a new certificate.
+    entrypoint: ["/bin/sh", "/etc/caddy/run.sh"]
+    command: []
     depends_on:
-      - web
-      - admin
+      web:
+        condition: service_started
+      admin:
+        condition: service_started
+      # Caddy refuses to start without the certificate files; certs is healthy
+      # once it has written at least its first-boot placeholder.
+      certs:
+        condition: service_healthy
     environment:
       SITE_DOMAIN: ${BIRD_SITE_DOMAIN}
+      SITE_HTTP_ADDRESSES: ${BIRD_SITE_HTTP_ADDRESSES}
+      SITE_HTTPS_ADDRESSES: ${BIRD_SITE_HTTPS_ADDRESSES}
       ADMIN_PORT: ${BIRD_ADMIN_PORT}
       HTTPS_PORT: ${BIRD_HTTPS_PORT}
       HTTPS_PORT_SUFFIX: ${BIRD_HTTPS_PORT_SUFFIX:-}
@@ -104,13 +130,20 @@ services:
       - "${BIRD_ADMIN_PORT}:${BIRD_ADMIN_PORT}"
     volumes:
       - ${BIRD_CADDYFILE:-./caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
+      - ${BIRD_CADDY_RUN:-./caddy/run.sh}:/etc/caddy/run.sh:ro
       - caddy-data:/data
       - caddy-logs:/var/log/caddy
+      - certs:/certs:ro
+      - acme-webroot:/srv/acme:ro
 
 volumes:
   admin-data:
   # HTTP access logs for both sites, rotated by Caddy (5 x 10 MiB each).
   caddy-logs:
-  # ACME account key and certificates. A named volume rather than a bind mount
-  # on a DO Volume: losing it costs one certificate re-issue, nothing more.
+  # Caddy's own state (it no longer holds certificates; see `certs`).
   caddy-data:
+  # The SAN certificate Caddy serves, plus lego's ACME account and store.
+  # A named volume, not a DO Volume: losing it costs one re-issue.
+  certs:
+  # HTTP-01 challenge files: written by certs, served by Caddy on :80.
+  acme-webroot:
