@@ -2,9 +2,10 @@
 
 Replaces financesite's secrets_cli.py. Two groups go to `docker compose`:
 
-  * SITE_KEYS -- defaults for the public `web` service (catalog URL, site
-    text, PayPal, live stub). Not secret. The admin console's Site settings
-    page overrides most of them at runtime.
+  * SITE_KEYS -- the public `web` service: defaults for the catalog URL, site
+    text, PayPal and live stub (which the admin console's Site settings page
+    overrides at runtime), and the contact form's mail settings. Only
+    SMTP_PASSWORD among them is secret.
   * ADMIN_KEYS -- the `admin` service's secrets and switches: its session
     signing key, the recovery-password switch and hash, and the Spaces key it
     uploads with. Only the admin container receives these.
@@ -33,6 +34,13 @@ SITE_KEYS = (
     "LIVE_KIND",
     "LIVE_URL",
     "LIVE_TITLE",
+    "CONTACT_EMAIL",
+    "CONTACT_FROM",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_SECURITY",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
     "LOG_LEVEL",
 )
 
@@ -46,7 +54,7 @@ ADMIN_KEYS = (
     "SPACES_REGION",
 )
 
-_SECRET = {"ADMIN_SESSION_KEY", "ADMIN_PASSWORD_HASH", "SPACES_KEY", "SPACES_SECRET"}
+_SECRET = {"ADMIN_SESSION_KEY", "ADMIN_PASSWORD_HASH", "SPACES_KEY", "SPACES_SECRET", "SMTP_PASSWORD"}
 
 
 def compose_values(cfg: DeployConfig) -> dict[str, str]:
@@ -98,6 +106,9 @@ def check(cfg: DeployConfig) -> None:
         print(f"  {key:28} {state}")
     if not raw.get("CATALOG_URL"):
         print("\n  warning: CATALOG_URL unset -- the deployed site will show no recordings.")
+    if not raw.get("SMTP_HOST"):
+        print("  note: SMTP_HOST unset -- contact-form messages go to `deploy-droplet logs web`, "
+              "not email.")
     if not raw.get("ADMIN_SESSION_KEY"):
         print("  warning: ADMIN_SESSION_KEY unset -- the admin console will not start. "
               "Run `deploy-droplet admin-password`.")

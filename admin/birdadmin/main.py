@@ -16,6 +16,7 @@
       GET    /api/jobs                  DELETE /api/jobs/{id}
       GET    /api/settings              PUT /api/settings
       GET    /api/passkeys              PATCH/DELETE /api/passkeys/{id}
+      GET    /api/logs                  Caddy access logs (?source=site|admin)
       POST   /api/webauthn/register/options|verify
 
 Deny by default: the middleware gates every path and the public ones are
@@ -49,7 +50,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from . import __version__, auth, media, passkeys
+from . import __version__, accesslog, auth, media, passkeys
 from .config import config
 from .jobs import JobQueue
 from .storage import LocalStorage, SpacesStorage, Storage
@@ -464,6 +465,17 @@ def get_settings() -> dict:
 @app.put("/api/settings")
 def put_settings(body: dict = Body(default={})) -> dict:
     return media.save_settings(storage, media.clean_settings(body))
+
+
+# ---------------------------------------------------------------- access logs
+
+@app.get("/api/logs")
+def access_logs(source: str = "site", limit: int = 200, q: str = "", status: str = "",
+                hideApi: bool = False) -> dict:  # noqa: N803 -- query name
+    if source not in accesslog.SOURCES:
+        raise ApiError(400, "Unknown log.")
+    return accesslog.read(cfg.access_log_dir, source, limit=limit, query=q, status=status,
+                          hide_api=hideApi)
 
 
 COMMON_SPECIES = (

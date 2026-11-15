@@ -37,6 +37,88 @@ def fresh_app(**env: str):
     return TestClient(main_mod.app)
 
 
+def contact_tests() -> None:
+    from email import message_from_string
+    from unittest import mock
+
+    c = fresh_app()
+    from birdheaven import config as config_mod, contact
+    check(config_mod.config().contact_email == "bird.heaven.admin@gmail.com", "default destination address")
+    check("bird.heaven.admin" not in c.get("/api/config").text, "destination never sent to the browser")
+    check('data-contact-form' in c.get("/").text, "form is on the front page")
+
+    good = {"name": "Ada Birder", "email": "ada@example.org",
+            "message": "Was that a purple finch on Tuesday?", "website": "", "elapsed": 9000}
+    post = lambda body, **h: c.post("/api/contact", json=body, headers=h)  # noqa: E731
+    contact.per_ip.__init__(5, 3600)
+
+    with mock.patch.object(contact, "deliver") as d:
+        r = post(good)
+        check(r.status_code == 200 and r.json() == {"ok": True}, "valid message accepted")
+        check(r.headers.get("cache-control") == "no-store", "response not cacheable")
+        check(d.call_count == 1, "valid message delivered")
+        msg = d.call_args[0][1]
+        check(msg["To"] == "bird.heaven.admin@gmail.com", "sent to CONTACT_EMAIL")
+        check(msg["Reply-To"] == "Ada Birder <ada@example.org>", "Reply-To is the visitor")
+        check("purple finch" in msg.get_content(), "message body included")
+
+        d.reset_mock()
+        check(post(dict(good, website="http://spam")).json() == {"ok": True} and not d.called,
+              "honeypot: looks sent, nothing delivered")
+        check(post(dict(good, elapsed=500)).json() == {"ok": True} and not d.called,
+              "too-fast submission silently dropped")
+        r = post(dict(good, name="Eve\r\nBcc: victim@example.com"))
+        check(r.status_code == 200 and "\n" not in d.call_args[0][1]["Reply-To"]
+              and d.call_args[0][1]["Bcc"] is None, "header injection via name is neutralised")
+        for bad, why in ((dict(good, email="not-an-email"), "bad email"),
+                         (dict(good, email="a@b.com\nBcc: x@y.z"), "email with newline"),
+                         (dict(good, name=""), "missing name"),
+                         (dict(good, message=" "), "empty message"),
+                         (dict(good, message="x" * 5001), "message too long")):
+            r = post(bad)
+            check(r.status_code == 400 and r.json()["error"], f"rejected: {why}")
+        check(c.post("/api/contact", content="name=x", headers={"content-type": "application/x-www-form-urlencoded"})
+              .status_code == 415, "non-JSON (cross-site form) rejected")
+        check(post(good, origin="https://evil.example").status_code == 403, "foreign Origin rejected")
+        check(c.post("/api/contact", content=b'{"m":"' + b"x" * 40000 + b'"}',
+                     headers={"content-type": "application/json"}).status_code == 413, "oversized body rejected")
+
+        contact.per_ip.__init__(5, 3600)
+        codes = [post(good).status_code for _ in range(6)]
+        check(codes[:5] == [200] * 5 and codes[5] == 429, f"per-IP rate limit (got {codes})")
+
+    contact.per_ip.__init__(5, 3600)
+    with mock.patch.object(contact, "deliver", side_effect=OSError("connection refused")):
+        r = post(good)
+        check(r.status_code == 502 and "couldn't be sent" in r.json()["error"], "SMTP failure reported kindly")
+
+    # Real SMTP conversation against a scripted fake server.
+    contact.per_ip.__init__(5, 3600)
+    sent: dict = {}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            sent.update(host=host, port=port)
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self, context): sent["tls"] = True
+        def login(self, u, p): sent["login"] = (u, p)
+        def send_message(self, m): sent["msg"] = m.as_string()
+
+    c = fresh_app(SMTP_HOST="smtp.example.net", SMTP_USERNAME="relay@example.net", SMTP_PASSWORD="pw",
+                  CONTACT_EMAIL="owner@example.com")
+    from birdheaven import contact as contact2
+    contact2.per_ip.__init__(5, 3600)
+    with mock.patch("smtplib.SMTP", FakeSMTP):
+        r = c.post("/api/contact", json=good)
+    m = message_from_string(sent.get("msg", ""))
+    check(r.status_code == 200 and sent.get("host") == "smtp.example.net" and sent.get("port") == 587
+          and sent.get("tls") and sent.get("login") == ("relay@example.net", "pw"), "SMTP: STARTTLS + login on 587")
+    check(m["To"] == "owner@example.com" and "relay@example.net" in m["From"], "CONTACT_EMAIL override; From = login")
+    for k in ("SMTP_HOST", "SMTP_USERNAME", "SMTP_PASSWORD", "CONTACT_EMAIL"):
+        os.environ.pop(k, None)
+
+
 def main() -> int:
     print("== default (dev catalog, offline, no PayPal)")
     c = fresh_app()
@@ -120,6 +202,9 @@ def main() -> int:
     r = c.get("/api/videos")
     check(r.status_code == 200 and r.json()["count"] == 0, "empty list, not an error")
     check(c.get("/api/health").json()["catalog"] == "unavailable", "health reports catalog unavailable")
+
+    print("== contact form")
+    contact_tests()
 
     print(f"\n{'FAILED: ' + str(len(FAILS)) if FAILS else 'all passed'}")
     return 1 if FAILS else 0

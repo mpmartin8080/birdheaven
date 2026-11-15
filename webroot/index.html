@@ -35,6 +35,7 @@
         <a href="#watch">Watch</a>
         <a href="#recordings">Recordings</a>
         <a href="#notes">Field notes</a>
+        <a href="#contact">Contact</a>
         <a href="#support" class="nav-support" data-support-link hidden>Support</a>
       </nav>
     </div>
@@ -146,7 +147,7 @@
           <p>There are no ads here and there never will be. Every clip is stored and streamed from cloud storage,
             which costs a little more each month as the archive grows. If a visit brightened your day, a small
             donation helps keep the whole flock online.</p>
-          <p class="fine">Donations are processed securely by PayPal. You don't need a PayPal account.</p>
+          <p class="fine"></b>Donations are processed securely by PayPal. You don't need a PayPal account.</p>
         </div>
         <form class="support-form" action="https://www.paypal.com/donate" method="post" target="_blank" data-paypal-form>
           <input type="hidden" name="hosted_button_id" value="" data-paypal-id>
@@ -163,6 +164,44 @@
             <span class="paypal-word"><span class="pp-pay">Pay</span><span class="pp-pal">Pal</span></span>
           </button>
           <p class="fine">Opens PayPal in a new tab.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============================== CONTACT ============================== -->
+    <section id="contact" class="contact wrap" aria-labelledby="contact-title">
+      <div class="contact-card">
+        <div class="contact-copy">
+          <p class="kicker">Say hello</p>
+          <h2 id="contact-title">Spotted something at the feeder?</h2>
+          <p>Questions about a visitor, an ID we got wrong, or a clip you'd like to see more of — send a note.
+            We read everything and reply when we can.</p>
+          <svg class="contact-feather" viewBox="0 0 64 64" aria-hidden="true">
+            <path d="M52 8C34 10 18 24 14 46l-4 10 8-6c20-2 34-18 34-42z"/>
+            <path class="quill" d="M48 13L18 50M30 24l8 2M24 32l9 2M20 40l8 1"/>
+          </svg>
+        </div>
+        <form class="contact-form" data-contact-form novalidate>
+          <label class="field">
+            <span>Your name</span>
+            <input type="text" name="name" autocomplete="name" maxlength="100" required>
+          </label>
+          <label class="field">
+            <span>Email <small>(so we can reply; never shared)</small></span>
+            <input type="email" name="email" autocomplete="email" maxlength="254" required>
+          </label>
+          <label class="field">
+            <span>Message</span>
+            <textarea name="message" rows="5" maxlength="5000" required></textarea>
+          </label>
+          <!-- Honeypot: hidden from people and screen readers; bots fill it in. -->
+          <div class="hp" aria-hidden="true">
+            <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+          </div>
+          <div class="contact-actions">
+            <button class="btn btn-primary" type="submit" data-contact-send>Send message</button>
+            <p class="contact-status" data-contact-status role="status" aria-live="polite"></p>
+          </div>
         </form>
       </div>
     </section>

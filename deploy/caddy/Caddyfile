@@ -27,11 +27,30 @@
 	reverse_proxy web:8000
 }
 
+# ACCESS LOGS, read by the admin console's Logs tab (admin/birdadmin/
+# accesslog.py) from the `caddy-logs` volume, which it mounts read-only.
+# JSON lines; Caddy redacts Cookie and Authorization headers by default.
+# Mode 0644 so the console's unprivileged user can read them; uncompressed
+# rotation so it can also read the most recent rolled-over file.
+(access_log) {
+	log {
+		output file /var/log/caddy/{args[0]}-access.log {
+			mode 0644
+			roll_size 10MiB
+			roll_keep 5
+			roll_uncompressed
+		}
+		format json
+	}
+}
+
 http://{$SITE_DOMAIN} {
+	import access_log site
 	import {$PORT80_MODE}
 }
 
 {$SITE_DOMAIN}:{$HTTPS_PORT} {
+	import access_log site
 	encode zstd gzip
 	header Strict-Transport-Security "max-age=31536000"
 
@@ -49,6 +68,7 @@ http://{$SITE_DOMAIN} {
 # https://{$SITE_DOMAIN}:{$ADMIN_PORT} (admin/birdadmin/auth.py). Sign-in is
 # the app's job (passkeys) -- nothing here bypasses it.
 {$SITE_DOMAIN}:{$ADMIN_PORT} {
+	import access_log admin
 	header Strict-Transport-Security "max-age=31536000"
 
 	# Video uploads stream through here. Uploads are capped by the app

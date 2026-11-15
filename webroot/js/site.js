@@ -3,7 +3,7 @@
 // Three requests on load, in parallel: /api/config (site text + PayPal id),
 // /api/live (stream status -- a stub today) and /api/videos (the catalog).
 // Each part of the page renders independently, so one failing never blanks
-// the others.
+// the others. The contact form posts to /api/contact.
 
 (() => {
   "use strict";
@@ -321,7 +321,61 @@
 
   $("[data-more-btn]").addEventListener("click", () => { state.shown += PAGE_SIZE; renderGrid(); });
 
+  // ---------------------------------------------------------------- contact
+
+  const pageOpened = Date.now();
+
+  function setupContact() {
+    const form = $("[data-contact-form]");
+    const status = $("[data-contact-status]");
+    const send = $("[data-contact-send]");
+    const say = (text, kind) => {
+      status.textContent = text;
+      status.classList.toggle("is-ok", kind === "ok");
+      status.classList.toggle("is-error", kind === "error");
+    };
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const field = (n) => form.elements.namedItem(n);
+      const f = { name: field("name"), email: field("email"), message: field("message"), website: field("website") };
+      // The browser's own checks, but with our wording and focus handling.
+      const problems = [
+        [f.name, !f.name.value.trim(), "Please tell us your name."],
+        [f.email, !f.email.value.trim() || !f.email.checkValidity(), "Please enter an email address we can reply to."],
+        [f.message, f.message.value.trim().length < 2, "Please write a message."],
+      ];
+      problems.forEach(([el, bad]) => el.setAttribute("aria-invalid", String(bad)));
+      const first = problems.find(([, bad]) => bad);
+      if (first) { say(first[2], "error"); first[0].focus(); return; }
+
+      send.disabled = true;
+      say("Sending…");
+      try {
+        const res = await fetch("/api/contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            name: f.name.value, email: f.email.value, message: f.message.value,
+            website: f.website.value, elapsed: Date.now() - pageOpened,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.error || "Sorry, your message couldn't be sent. Please try again later.");
+        form.reset();
+        say("Thanks! Your message is on its way.", "ok");
+      } catch (err) {
+        say(err instanceof TypeError ? "Couldn't reach the site. Check your connection and try again." : err.message, "error");
+      } finally {
+        send.disabled = false;
+      }
+    });
+    form.addEventListener("input", (e) => e.target.removeAttribute("aria-invalid"));
+  }
+
   // ---------------------------------------------------------------- boot
+
+  setupContact();
 
   $("[data-greeting]").textContent = greeting();
   $("[data-year]").textContent = new Date().getFullYear();

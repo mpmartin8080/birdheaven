@@ -59,6 +59,9 @@ class AdminConfig:
     transcode_preset: str
     max_upload_bytes: int
 
+    # Caddy's access logs, mounted read-only (see accesslog.py).
+    access_log_dir: Path
+
     @property
     def work_dir(self) -> Path:
         return self.data_dir / "work"
@@ -100,4 +103,5 @@ def config() -> AdminConfig:
         public_site_url=_str("PUBLIC_SITE_URL", "/"),
         transcode_preset=_str("ADMIN_TRANSCODE_PRESET", "veryfast"),
         max_upload_bytes=int(_str("ADMIN_MAX_UPLOAD_MB") or 4096) * 1024 * 1024,
+        access_log_dir=Path(_str("ADMIN_ACCESS_LOG_DIR") or "/logs"),
     )

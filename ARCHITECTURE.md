@@ -33,9 +33,9 @@ passkey-protected admin console.
 | Piece | What it is | Where it lives |
 |---|---|---|
 | `webroot/` | The public front page: plain HTML/CSS/JS, no build step | Baked into the `web` image |
-| `app/birdheaven/` | Public FastAPI service: page, catalog API, live-status stub, site settings overlay, security headers. **Holds no secrets.** | `web` container |
-| `admin/birdadmin/` + `admin/static/` | Admin console: passkey sign-in, upload/edit/delete clips, regenerate posters, edit site settings, manage passkeys | `admin` container, at `https://<domain>:7777/` |
-| Caddy | TLS on :443 and :7777 (one certificate), HTTP→HTTPS, compression, upload size backstop | `caddy` container |
+| `app/birdheaven/` | Public FastAPI service: page, catalog API, live-status stub, site settings overlay, contact form, security headers. Its only secret is the SMTP password. | `web` container |
+| `admin/birdadmin/` + `admin/static/` | Admin console: passkey sign-in, upload/edit/delete clips, regenerate posters, edit site settings, manage passkeys, view access logs | `admin` container, at `https://<domain>:7777/` |
+| Caddy | TLS on :443 and :7777 (one certificate), HTTP→HTTPS, compression, upload size backstop, JSON access logs for both sites | `caddy` container |
 | Spaces + CDN | Videos, posters, `catalog.json`, `site-settings.json` | DigitalOcean Spaces |
 | `deploy/` | Workstation CLI: bootstrap, build both images on the droplet, `compose up`, certificates, rollback, prune, admin password | Your machine only |
 | `tools/publish.py` | Optional command-line publishing; same code as the admin console | Your machine only |
@@ -157,6 +157,13 @@ firewalling 7777 to your own IP.
   the bucket, and the public site picks them up within about a minute, with
   no redeploy. The `.env.prod` values become defaults for anything left blank.
 - **Passkeys:** add (one per device), list, remove.
+- **Logs:** the HTTP access log of the public site (ports 80 and 443) and of
+  the console itself (7777), newest first, filterable by text, status class
+  and `/api/` noise, with optional auto-refresh. Caddy writes them as JSON
+  lines to the `caddy-logs` volume (rotated at 10 MiB, 5 kept), which the
+  console mounts **read-only**. Only the tail of each file is read. The
+  console never gets the Docker socket: that would hand the internet-facing
+  container root on the droplet.
 
 **Authentication** follows financesite's WebAuthn design (py_webauthn,
 discoverable credentials, user verification required, the challenge in a
@@ -183,8 +190,9 @@ is off, which would lock you out.
 
 **Container:** `python:3.11-slim` with Debian's ffmpeg (so not distroless,
 unlike `web`), runs as uid 10001, publishes no port itself, and only Caddy
-reaches it (Caddy publishes 7777 and proxies to it). It is the only container holding secrets: the session key, the
-password hash, and the Spaces key.
+reaches it (Caddy publishes 7777 and proxies to it). It holds the important
+secrets: the session key, the password hash, and the Spaces key. (`web` holds
+only the contact form's SMTP password.)
 
 ## Live video: a stub with a clear seam
 
@@ -212,10 +220,34 @@ posts to `https://www.paypal.com/donate`. No PayPal JavaScript runs, which
 keeps the CSP tight. The button ID is set in the admin console (or
 `PAYPAL_HOSTED_BUTTON_ID`); the support panel is hidden if it is empty.
 
+## Contact form
+
+A plain form on the front page that `POST`s JSON to `/api/contact`. The web
+service emails it over SMTP to `CONTACT_EMAIL` (default
+`bird.heaven.admin@gmail.com`), with the visitor's address as `Reply-To`. The
+destination is never sent to the browser. Without `SMTP_HOST`, messages are
+written to the `web` container's log instead, so none are lost before mail is
+set up.
+
+**DigitalOcean blocks outbound SMTP** (ports 25, 465 and 587) on new
+droplets. Either ask DO support to lift the block (Gmail with an app password
+then works), or use a relay that accepts port 2525 (SMTP2GO, Mailgun,
+SendGrid, Brevo). See `deploy/.env.example`.
+
+**Abuse controls:**
+- A hidden honeypot field.
+- A minimum time on the page (3 s).
+- Rate limits: 5 messages per IP per hour, 100 per day site-wide.
+- Length limits and a 32 KB body cap.
+- Header-injection-safe fields.
+- A JSON-only, same-origin check.
+
+Bot submissions get the same "sent" reply as real ones.
+
 ## Security posture
 
-- **Public site:** read-only, no login, no database, no secrets in the
-  container. Distroless, non-root. Strict CSP (scripts from self, plus cdnjs
+- **Public site:** read-only, no login, no database, no storage credentials;
+  its one secret is the SMTP password. Distroless, non-root. Strict CSP (scripts from self, plus cdnjs
   for hls.js only; media from the configured origin; forms to PayPal;
   `frame-ancestors 'none'`).
 - **Admin console:** deny-by-default auth gate with an explicit public-path

@@ -77,6 +77,7 @@ function showTab(name) {
   if (name === 'settings') loadSettings();
   if (name === 'passkeys') loadPasskeys();
   if (name === 'upload') loadJobs();
+  if (name === 'logs') loadLogs();
 }
 $$('[data-tab]').forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
 $$('[data-goto]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.goto)));
@@ -571,6 +572,98 @@ $('[data-add-key]').addEventListener('submit', async (e) => {
   }
 });
 
+// ---------------------------------------------------------------- logs
+
+const logFilters = $('[data-log-filters]');
+const logState = { source: 'site', timer: null, loading: false };
+
+function logCell(text, cls) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  td.textContent = text;
+  return td;
+}
+
+function logRow(e) {
+  const tr = document.createElement('tr');
+  const d = new Date(e.ts);
+  const when = logCell(isNaN(d) ? '' : d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }), 'when');
+  if (!isNaN(d)) when.title = d.toISOString();
+
+  const req = document.createElement('td');
+  req.className = 'req';
+  const m = document.createElement('span');
+  m.className = 'method';
+  m.textContent = e.method;
+  req.append(m, document.createTextNode(e.uri));
+  if (e.referer) req.title = `Referer: ${e.referer}`;
+
+  const st = document.createElement('td');
+  const pill = document.createElement('span');
+  pill.className = `status-pill s${String(e.status)[0]}`;
+  pill.textContent = e.status || '—';
+  st.append(pill);
+
+  const ua = logCell(e.userAgent, 'ua');
+  ua.title = e.userAgent;
+  tr.append(when, logCell(e.ip, 'ip'), req, st, logCell(fmtBytes(e.size), 'num'),
+    logCell(e.durationMs == null ? '' : e.durationMs.toLocaleString(), 'num'), ua);
+  return tr;
+}
+
+async function loadLogs() {
+  if (logState.loading) return;
+  logState.loading = true;
+  const f = logFilters.elements;
+  const params = new URLSearchParams({
+    source: logState.source, q: f.q.value, status: f.status.value,
+    limit: f.limit.value, hideApi: String(f.hideApi.checked),
+  });
+  try {
+    const data = await api('GET', `/api/logs?${params}`);
+    $('[data-log-missing]').hidden = data.available;
+    $('[data-log-file]').textContent = data.file;
+    $('[data-log-wrap]').hidden = !data.available || !data.entries.length;
+    $('[data-log-empty]').hidden = !data.available || data.entries.length > 0;
+    $('[data-log-rows]').replaceChildren(...data.entries.map(logRow));
+    const s = data.summary;
+    $('[data-log-summary]').textContent = data.available && s.requests
+      ? `Showing ${data.entries.length.toLocaleString()} of the last ${s.requests.toLocaleString()} requests`
+        + (s.since ? ` (since ${fmtDate(s.since)})` : '')
+        + ` · ${s.visitors.toLocaleString()} distinct IP${s.visitors === 1 ? '' : 's'}`
+        + ` · ${s.errors.toLocaleString()} error${s.errors === 1 ? '' : 's'} (4xx/5xx)`
+      : '';
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    logState.loading = false;
+  }
+}
+
+function setLogAuto(on) {
+  clearInterval(logState.timer);
+  logState.timer = on ? setInterval(() => {
+    if (!$('[data-panel="logs"]').hidden && !document.hidden) loadLogs();
+  }, 10000) : null;
+}
+
+$$('[data-log-source]').forEach((b) => b.addEventListener('click', () => {
+  logState.source = b.dataset.logSource;
+  $$('[data-log-source]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  loadLogs();
+}));
+logFilters.addEventListener('submit', (e) => { e.preventDefault(); loadLogs(); });
+logFilters.addEventListener('change', (e) => {
+  if (e.target.name === 'auto') setLogAuto(e.target.checked);
+  else if (e.target.name !== 'q') loadLogs();
+});
+let logSearchTimer;
+logFilters.q.addEventListener('input', () => {
+  clearTimeout(logSearchTimer);
+  logSearchTimer = setTimeout(loadLogs, 300);
+});
+
 // ---------------------------------------------------------------- boot
 
 (async () => {
@@ -582,7 +675,7 @@ $('[data-add-key]').addEventListener('submit', async (e) => {
     await loadStatus();
   } catch { return; }
   const wanted = location.hash.slice(1);
-  const first = ['clips', 'upload', 'settings', 'passkeys'].includes(wanted) ? wanted
+  const first = ['clips', 'upload', 'settings', 'passkeys', 'logs'].includes(wanted) ? wanted
     : (state.status.method === 'password' && state.status.passkeys === 0 ? 'passkeys' : 'clips');
   showTab(first);
   loadClips().catch((err) => toast(err.message, true));

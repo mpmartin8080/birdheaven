@@ -13,8 +13,9 @@
 #   * Site settings (catalog, media origin, PayPal, live stub) come from
 #     deploy/.env.prod as *defaults*; the admin console's Site settings page
 #     overrides them at runtime via site-settings.json in the bucket.
-#   * `admin` is the only service holding secrets (session key, recovery
-#     password hash, Spaces key). Caddy serves it on the site's hostname at
+#   * `admin` holds the important secrets (session key, recovery password
+#     hash, Spaces key). `web` holds only the contact form's SMTP password.
+#     Caddy serves it on the site's hostname at
 #     its own port (BIRD_DEPLOY_ADMIN_PORT, default 7777) -- the admin
 #     container itself publishes nothing.
 #
@@ -42,6 +43,15 @@ services:
       LIVE_KIND: ${LIVE_KIND:-}
       LIVE_URL: ${LIVE_URL:-}
       LIVE_TITLE: ${LIVE_TITLE:-Feeder cam}
+      # The contact form. Without SMTP_HOST, messages go to this container's
+      # log instead of email. SMTP_PASSWORD is the web service's only secret.
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-bird.heaven.admin@gmail.com}
+      CONTACT_FROM: ${CONTACT_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
   admin:
@@ -69,6 +79,9 @@ services:
       # Passkeys (public keys only) and the upload work area. Losing it costs
       # re-registering a passkey via the recovery password, nothing more.
       - admin-data:/data
+      # Caddy's access logs, for the console's Logs tab. Read-only: the
+      # console can show them, never alter them.
+      - caddy-logs:/logs:ro
 
   caddy:
     # Same pinned image as financesite.
@@ -92,9 +105,12 @@ services:
     volumes:
       - ${BIRD_CADDYFILE:-./caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
+      - caddy-logs:/var/log/caddy
 
 volumes:
   admin-data:
+  # HTTP access logs for both sites, rotated by Caddy (5 x 10 MiB each).
+  caddy-logs:
   # ACME account key and certificates. A named volume rather than a bind mount
   # on a DO Volume: losing it costs one certificate re-issue, nothing more.
   caddy-data:

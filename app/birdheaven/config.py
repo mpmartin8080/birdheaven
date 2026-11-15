@@ -1,8 +1,9 @@
 """Configuration, all of it from the environment.
 
-Nothing here is a secret. The site is public and read-only: the container needs
-to know where the catalog and media live, and the *defaults* for the site text,
-PayPal button and live stream. Those defaults are overridden at runtime by
+The site is public and read-only: the container needs to know where the catalog
+and media live, and the *defaults* for the site text, PayPal button and live
+stream. Its one secret is the SMTP password the contact form sends mail with
+(it holds no storage credentials). The site-text defaults are overridden at runtime by
 `site-settings.json`, which the admin console writes next to `catalog.json` in
 the bucket (see sitesettings.py) -- so most day-to-day changes need no deploy.
 """
@@ -18,6 +19,9 @@ from urllib.parse import urlsplit
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SETTINGS_OBJECT = "site-settings.json"
+
+# Where the contact form sends messages unless CONTACT_EMAIL says otherwise.
+DEFAULT_CONTACT_EMAIL = "bird.heaven.admin@gmail.com"
 
 
 def _str(name: str, default: str = "") -> str:
@@ -62,6 +66,15 @@ class Config:
     live_url: str
     live_title: str
 
+    # Contact form (contact.py). The only secret here is smtp_password.
+    contact_email: str
+    contact_from: str
+    smtp_host: str
+    smtp_port: int
+    smtp_security: str  # starttls | ssl | none
+    smtp_username: str
+    smtp_password: str
+
     @property
     def media_origin(self) -> str:
         return origin_of(self.media_base_url)
@@ -73,7 +86,21 @@ def config() -> Config:
     media_base = _str("MEDIA_BASE_URL")
     if not media_base and catalog_source.startswith(("http://", "https://")):
         media_base = catalog_source.rsplit("/", 1)[0]
+    security = _str("SMTP_SECURITY", "starttls").lower()
+    if security not in ("starttls", "ssl", "none"):
+        raise ValueError(f"SMTP_SECURITY must be starttls, ssl or none (got {security!r})")
+    contact_email = _str("CONTACT_EMAIL") or DEFAULT_CONTACT_EMAIL
+    smtp_username = _str("SMTP_USERNAME")
     return Config(
+        contact_email=contact_email,
+        # Many relays only accept a verified sender; default to the login,
+        # which for Gmail-style providers is the mailbox itself.
+        contact_from=_str("CONTACT_FROM") or (smtp_username if "@" in smtp_username else contact_email),
+        smtp_host=_str("SMTP_HOST"),
+        smtp_port=int(_str("SMTP_PORT") or (465 if security == "ssl" else 587)),
+        smtp_security=security,
+        smtp_username=smtp_username,
+        smtp_password=os.environ.get("SMTP_PASSWORD", ""),
         static_dir=Path(_str("STATIC_DIR") or (_REPO_ROOT / "webroot")),
         catalog_source=catalog_source,
         settings_source=_str("SETTINGS_URL") or _sibling(catalog_source, SETTINGS_OBJECT),

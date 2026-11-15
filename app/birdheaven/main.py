@@ -4,6 +4,7 @@
     GET /api/config    site name, tagline, PayPal button id (public values only)
     GET /api/videos    the recordings catalog, absolute media URLs
     GET /api/live      live stream status (stub -- see live.py)
+    POST /api/contact  the contact form (see contact.py)
     GET /api/health    liveness for Caddy / deploy status
 
 Video bytes never pass through here; browsers fetch them from the Spaces CDN.
@@ -13,16 +14,19 @@ overlaid by the site-settings.json the admin console writes.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
-from . import __version__, live
+from . import __version__, contact, live
 from .catalog import CatalogCache
 from .config import config, origin_of
 from .sitesettings import SettingsCache
@@ -33,6 +37,8 @@ logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
 cfg = config()
 catalog = CatalogCache(cfg)
 settings = SettingsCache(cfg)
+
+CONTACT_MAX_BODY = 32 * 1024
 
 app = FastAPI(title="Bird Heaven", version=__version__,
               docs_url=None, redoc_url=None, openapi_url=None)
@@ -107,6 +113,39 @@ def site_config() -> dict:
         "location": s["location"],
         "paypalHostedButtonId": s["paypalHostedButtonId"] or None,
     }
+
+
+@app.post("/api/contact")
+async def contact_form(request: Request) -> JSONResponse:
+    no_store = {"Cache-Control": "no-store"}
+
+    def fail(message: str, status: int) -> JSONResponse:
+        return JSONResponse({"ok": False, "error": message}, status_code=status, headers=no_store)
+
+    # JSON only (a cross-site page can't send that without a CORS preflight,
+    # which this API never answers), from this site's own pages, and small.
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+        return fail("Please send the form as JSON.", 415)
+    origin = request.headers.get("origin")
+    if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
+        return fail("Cross-site form posts are not accepted.", 403)
+    raw = b""
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > CONTACT_MAX_BODY:
+            return fail("That message is too long.", 413)
+    try:
+        body = json.loads(raw or b"{}")
+    except ValueError:
+        return fail("Please send the form as JSON.", 400)
+
+    client_ip = request.client.host if request.client else "unknown"
+    try:
+        # Sending can take seconds; keep it off the event loop.
+        await run_in_threadpool(contact.handle, cfg, settings.get()["siteName"], body, client_ip)
+    except contact.ContactError as err:
+        return fail(str(err), err.status)
+    return JSONResponse({"ok": True}, headers=no_store)
 
 
 @app.get("/api/videos")

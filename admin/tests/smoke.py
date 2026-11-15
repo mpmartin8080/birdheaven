@@ -178,6 +178,55 @@ def run(tmp: Path) -> None:
                      (dict(good, siteName=" "), "blank name")):
         check(c.put("/api/settings", json=bad, headers=ORIGIN).status_code == 400, f"rejects {why}")
 
+    print("== access logs")
+    logs_dir = tmp / "logs"
+    c, main_mod = fresh(tmp, ADMIN_PASSWORD_LOGIN="true", ADMIN_PASSWORD_HASH=HASH,
+                        ADMIN_ACCESS_LOG_DIR=str(logs_dir))
+    check(c.get("/api/logs").status_code == 401, "logs require a session")
+    c = signed_in(c, "password")
+    r = c.get("/api/logs?source=site").json()
+    check(r["available"] is False and r["entries"] == [], "no log file yet -> reported, not an error")
+    check(c.get("/api/logs?source=../etc").status_code == 400, "unknown log source refused")
+
+    def line(ts, uri, status, ip="203.0.113.7", ua="Mozilla/5.0"):
+        return json.dumps({"level": "info", "ts": ts, "logger": "http.log.access.log0",
+                           "msg": "handled request", "duration": 0.0123, "size": 512, "status": status,
+                           "request": {"remote_ip": "10.0.0.2", "client_ip": ip, "proto": "HTTP/2.0",
+                                       "method": "GET", "host": "birdheaven.plebe.net", "uri": uri,
+                                       "headers": {"User-Agent": [ua], "Cookie": ["REDACTED"]}}})
+
+    logs_dir.mkdir()
+    (logs_dir / "site-access-2026-11-14T00-00-00.000.log").write_text(
+        line(1794700000, "/old-rolled", 200) + "\n", encoding="utf-8")
+    (logs_dir / "site-access.log").write_text("\n".join([
+        line(1794750000, "/", 200),
+        "not json at all",
+        line(1794750001, "/api/videos", 200),
+        line(1794750002, "/missing", 404, ip="198.51.100.9", ua="BadBot/1.0"),
+        line(1794750003, "/api/contact", 502),
+    ]) + "\n", encoding="utf-8")
+    (logs_dir / "admin-access.log").write_text(line(1794750004, "/api/clips", 200) + "\n", encoding="utf-8")
+
+    r = c.get("/api/logs?source=site").json()
+    uris = [e["uri"] for e in r["entries"]]
+    check(r["available"] and uris == ["/api/contact", "/missing", "/api/videos", "/", "/old-rolled"],
+          f"newest first, bad lines skipped, rolled file included (got {uris})")
+    e = r["entries"][1]
+    check(e["ip"] == "198.51.100.9" and e["status"] == 404 and e["durationMs"] == 12.3
+          and e["userAgent"] == "BadBot/1.0" and e["ts"].startswith("2026-"), "fields parsed (client IP, not proxy IP)")
+    check(r["summary"]["requests"] == 5 and r["summary"]["errors"] == 2 and r["summary"]["visitors"] == 2,
+          "summary counts requests, errors and distinct IPs")
+    check([e["uri"] for e in c.get("/api/logs?source=site&status=4xx").json()["entries"]] == ["/missing"],
+          "status filter")
+    check([e["uri"] for e in c.get("/api/logs?source=site&q=badbot").json()["entries"]] == ["/missing"],
+          "text filter matches the user agent")
+    check("/api/videos" not in [e["uri"] for e in c.get("/api/logs?source=site&hideApi=true").json()["entries"]],
+          "hide /api/ calls")
+    check(len(c.get("/api/logs?source=site&limit=2").json()["entries"]) == 2, "limit")
+    check([e["uri"] for e in c.get("/api/logs?source=admin").json()["entries"]] == ["/api/clips"],
+          "admin console log is separate")
+    check("Cookie" not in json.dumps(c.get("/api/logs?source=site").json()), "request headers are not passed through")
+
     print("== passkey guard and switch-off")
     from birdadmin import passkeys
     entry = passkeys.add(b"cred-1", b"pk", 0, ["internal"], "Test key")

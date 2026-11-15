@@ -39,7 +39,7 @@ the overall design.
 7. **Settings.**
    ```
    copy deploy\.env.example deploy\.env.prod
-   notepad deploy\.env.prod          (host, domain, CATALOG_URL, SPACES_* keys)
+   notepad deploy\.env.prod          (host, domain, CATALOG_URL, SPACES_* keys, SMTP_*)
    deploy-droplet admin-password --enable
    deploy-droplet check
    ```
@@ -147,6 +147,34 @@ py -3 -m tools.publish remove 2026-11-14-cardinal-pair
 Changes reach the public site within about a minute (60 s cache in the app,
 plus up to 30 s at the CDN). Pointing `CATALOG_URL` at the bucket's origin
 endpoint instead of the CDN removes the CDN part.
+
+## Contact form email
+
+The front page's contact form sends to `CONTACT_EMAIL` in `deploy\.env.prod`
+(default `bird.heaven.admin@gmail.com`). Visitors never see that address, and
+the sender's address is set as Reply-To.
+
+Until `SMTP_HOST` is set, messages are only written to the web container's
+log. Read them with `deploy-droplet logs web`. To get real email:
+
+1. **DigitalOcean blocks outbound SMTP** (ports 25/465/587) on new droplets.
+   Pick one:
+   - **Ask DO support to lift the block.** Then use Gmail: `SMTP_HOST=smtp.gmail.com`,
+     `SMTP_PORT=587`, `SMTP_USERNAME=` the Gmail address, `SMTP_PASSWORD=` a
+     Google **app password** (Google account → Security → 2-Step Verification
+     → App passwords).
+   - **Use a relay on port 2525** (SMTP2GO, Mailgun, SendGrid, Brevo, ...):
+     their host, `SMTP_PORT=2525`, their credentials, and a `CONTACT_FROM`
+     address you have verified with them.
+2. Run `deploy-droplet up`, then send yourself a test message from the site.
+   If it fails, `deploy-droplet logs web` shows the SMTP error.
+
+## Access logs
+
+The admin console's **Logs** tab shows every HTTP request to the public site
+and to the console. Caddy writes these logs to the `caddy-logs` volume as JSON
+and rotates them at 10 MiB, keeping 5 files per site. In local development
+there is no Caddy, so the tab says there are no logs.
 
 ## Changing site settings
 

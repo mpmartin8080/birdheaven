@@ -273,6 +273,39 @@ h3 { font-size: 1.15rem; }
 .pp-pay { color: #003087; }
 .pp-pal { color: #009cde; }
 
+/* ---------- contact ---------- */
+.contact { padding: 56px 0 70px; }
+.support:not([hidden]) + .contact { padding-top: 0; }
+.contact-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: clamp(20px, 4vw, 48px); align-items: start;
+  padding: clamp(22px, 4vw, 44px); border-radius: var(--radius-lg);
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+@media (max-width: 760px) { .contact-card { grid-template-columns: 1fr; } }
+.contact-copy h2 { margin-bottom: .6rem; }
+.contact-copy p { color: var(--ink-2); max-width: 30rem; }
+.contact-feather { width: 56px; height: 56px; margin-top: 1.2rem; }
+.contact-feather path { fill: var(--robin-soft); stroke: var(--robin); stroke-width: 2; stroke-linejoin: round; }
+.contact-feather .quill { fill: none; stroke: var(--moss); stroke-linecap: round; }
+@media (max-width: 760px) { .contact-feather { display: none; } }
+
+.contact-form { display: grid; gap: 14px; }
+.field { display: grid; gap: 6px; font-weight: 600; font-size: .95rem; }
+.field small { font-weight: 400; color: var(--ink-2); }
+.field input, .field textarea {
+  font: 400 1rem/1.45 var(--body); color: var(--ink); background: var(--paper);
+  border: 1.5px solid var(--line); border-radius: 10px; padding: .65em .8em; width: 100%;
+}
+.field textarea { resize: vertical; min-height: 7.5em; }
+.field input:focus-visible, .field textarea:focus-visible { outline: 3px solid var(--robin); outline-offset: 1px; border-color: var(--moss); }
+.field [aria-invalid="true"] { border-color: var(--cardinal); }
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.contact-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.contact-actions .btn[disabled] { opacity: .6; cursor: progress; transform: none; }
+.contact-status { margin: 0; font-size: .95rem; color: var(--ink-2); }
+.contact-status.is-ok { color: var(--moss); font-weight: 600; }
+.contact-status.is-error { color: var(--cardinal); font-weight: 600; }
+
 /* ---------- footer ---------- */
 .site-footer { border-top: 1px solid var(--line); padding: 26px 0 34px; color: var(--ink-2); font-size: .92rem; }
 .footer-inner { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
