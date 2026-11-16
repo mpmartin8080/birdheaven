@@ -198,6 +198,12 @@ firewalling 7777 to your own IP.
   console mounts **read-only**. Only the tail of each file is read. The
   console never gets the Docker socket: that would hand the internet-facing
   container root on the droplet.
+  A third view, **Sign-ins**, is the console's own authentication log
+  (`authlog.py`). It records sign-ins, failures with their reason, throttling,
+  password attempts while the switch is off, sign-outs, and passkey changes,
+  each with the IP and browser. It is JSON lines in `/data/auth-log.jsonl`
+  (one rolled copy at 1 MiB). Writing to it never blocks a sign-in, and
+  passwords are never recorded.
 
 **Authentication** follows financesite's WebAuthn design (py_webauthn,
 discoverable credentials, user verification required, the challenge in a

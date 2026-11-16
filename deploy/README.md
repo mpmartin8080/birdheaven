@@ -209,6 +209,14 @@ and to the console. Caddy writes these logs to the `caddy-logs` volume as JSON
 and rotates them at 10 MiB, keeping 5 files per site. In local development
 there is no Caddy, so the tab says there are no logs.
 
+Its **Sign-ins** view is the console's own record of authentication. It
+lists every sign-in, successful or failed (with the reason), throttled
+attempts, password attempts made while the switch is off, sign-outs, and
+passkeys added, renamed or removed. Each event shows its time, IP and
+browser. Passwords are never recorded. The log is kept in
+`auth-log.jsonl` on the admin's private volume, so it survives deploys,
+and rolls over at 1 MiB.
+
 ## Changing site settings
 
 Use the admin console's **Site settings** tab: name, tagline, intro, location,

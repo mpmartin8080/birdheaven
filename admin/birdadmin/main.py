@@ -17,6 +17,7 @@
       GET    /api/settings              PUT /api/settings
       GET    /api/passkeys              PATCH/DELETE /api/passkeys/{id}
       GET    /api/logs                  Caddy access logs (?source=site|admin)
+      GET    /api/auth-log              sign-ins, failures, passkey changes
       POST   /api/webauthn/register/options|verify
 
 Deny by default: the middleware gates every path and the public ones are
@@ -50,7 +51,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from . import __version__, accesslog, auth, media, passkeys
+from . import __version__, accesslog, auth, authlog, media, passkeys
 from .config import config
 from .jobs import JobQueue
 from .storage import LocalStorage, SpacesStorage, Storage
@@ -162,6 +163,16 @@ def _transports(raw: list[str] | None) -> list[AuthenticatorTransport] | None:
     return out or None
 
 
+def _audit(event: str, request: Request, *, method: str = "", detail: str = "") -> None:
+    authlog.record(cfg.data_dir, event, request, method=method, detail=detail)
+
+
+def _throttle_check(request: Request, method: str) -> None:
+    if auth.throttled():
+        _audit("signin_throttled", request, method=method)
+        raise ApiError(429, "Too many failed attempts. Try again in a few minutes.")
+
+
 def _descriptors() -> list[PublicKeyCredentialDescriptor]:
     return [PublicKeyCredentialDescriptor(id=passkeys.unb64(c["credential_id"]),
                                           transports=_transports(c.get("transports")))
@@ -187,23 +198,28 @@ def auth_status(request: Request) -> dict:
 
 
 @app.post("/api/session/password")
-def password_login(body: dict = Body(default={})) -> JSONResponse:
+def password_login(request: Request, body: dict = Body(default={})) -> JSONResponse:
     if not cfg.password_login:
+        _audit("password_disabled", request, method="password")
         # Indistinguishable from "no such endpoint" while the switch is off.
         return JSONResponse({"error": "Not found."}, status_code=404)
-    if auth.throttled():
-        raise ApiError(429, "Too many failed attempts. Try again in a few minutes.")
+    _throttle_check(request, "password")
     if not auth.verify_password(str(body.get("password") or "")):
         auth.record_failure()
+        _audit("signin_failed", request, method="password", detail="wrong password")
         raise ApiError(401, "That password is not right.")
     auth.clear_failures()
+    _audit("signin", request, method="password", detail="recovery password")
     response = JSONResponse({"ok": True})
     auth.issue_cookie(response, "password")
     return response
 
 
 @app.delete("/api/session")
-def sign_out() -> JSONResponse:
+def sign_out(request: Request) -> JSONResponse:
+    s = auth.session(request)
+    if s:
+        _audit("signout", request, method=str(s.get("m") or ""))
     response = JSONResponse({"ok": True})
     auth.clear_cookie(response)
     return response
@@ -211,8 +227,7 @@ def sign_out() -> JSONResponse:
 
 @app.post("/api/webauthn/login/options")
 def login_options(request: Request) -> Response:
-    if auth.throttled():
-        raise ApiError(429, "Too many failed attempts. Try again in a few minutes.")
+    _throttle_check(request, "passkey")
     descriptors = _descriptors()
     if not descriptors:
         raise ApiError(400, "No passkeys are registered yet.")
@@ -228,8 +243,7 @@ def login_options(request: Request) -> Response:
 
 @app.post("/api/webauthn/login/verify")
 def login_verify(request: Request, body: dict = Body(default={})) -> JSONResponse:
-    if auth.throttled():
-        raise ApiError(429, "Too many failed attempts. Try again in a few minutes.")
+    _throttle_check(request, "passkey")
     try:
         challenge = passkeys.read_challenge(request, "login")
     except passkeys.CeremonyError as err:
@@ -241,6 +255,8 @@ def login_verify(request: Request, body: dict = Body(default={})) -> JSONRespons
     entry = passkeys.find_by_credential_id(passkeys.unb64(raw_id))
     if not entry:
         auth.record_failure()
+        _audit("signin_failed", request, method="passkey",
+               detail="a passkey not registered here (removed, or for another site)")
         raise ApiError(401, "That passkey is not registered here.")
     try:
         verified = verify_authentication_response(
@@ -254,10 +270,12 @@ def login_verify(request: Request, body: dict = Body(default={})) -> JSONRespons
         )
     except WebAuthnException as err:
         auth.record_failure()
-        log.warning("passkey sign-in failed: %s", err)
+        _audit("signin_failed", request, method="passkey",
+               detail=f"{entry.get('nickname') or 'passkey'}: {err}")
         raise ApiError(401, "That passkey could not be verified.") from err
     auth.clear_failures()
     passkeys.mark_used(entry["id"], verified.new_sign_count)
+    _audit("signin", request, method="passkey", detail=str(entry.get("nickname") or "Passkey"))
     response = JSONResponse({"ok": True})
     auth.issue_cookie(response, "passkey")
     passkeys.clear_challenge(response)
@@ -306,31 +324,41 @@ def register_verify(request: Request, body: dict = Body(default={})) -> JSONResp
             require_user_verification=True,
         )
     except WebAuthnException as err:
+        _audit("passkey_add_failed", request, detail=str(err))
         raise ApiError(400, f"That passkey could not be registered: {err}") from err
     entry = passkeys.add(verified.credential_id, verified.credential_public_key,
                          verified.sign_count,
                          (credential.get("response") or {}).get("transports"),
                          " ".join(str(body.get("nickname") or "").split()))
+    _audit("passkey_added", request, detail=entry["nickname"])
     response = JSONResponse(passkeys.public_view(entry))
     passkeys.clear_challenge(response)
     return response
 
 
 @app.patch("/api/passkeys/{entry_id}")
-def rename_passkey(entry_id: int, body: dict = Body(default={})) -> dict:
+def rename_passkey(entry_id: int, request: Request, body: dict = Body(default={})) -> dict:
+    before = _nickname(entry_id)
     if not passkeys.rename(entry_id, " ".join(str(body.get("nickname") or "").split())):
         raise ApiError(404, "No such passkey.")
+    _audit("passkey_renamed", request, detail=f"{before} -> {_nickname(entry_id)}")
     return {"ok": True}
 
 
+def _nickname(entry_id: int) -> str:
+    return next((str(c.get("nickname")) for c in passkeys.all_credentials() if c["id"] == entry_id), "?")
+
+
 @app.delete("/api/passkeys/{entry_id}")
-def delete_passkey(entry_id: int) -> dict:
+def delete_passkey(entry_id: int, request: Request) -> dict:
     creds = passkeys.all_credentials()
     if len(creds) == 1 and creds[0]["id"] == entry_id and not cfg.password_login:
         raise ApiError(409, "That is your only passkey and password login is off, so "
                             "removing it would lock you out. Add another passkey first.")
+    name = _nickname(entry_id)
     if not passkeys.remove(entry_id):
         raise ApiError(404, "No such passkey.")
+    _audit("passkey_removed", request, detail=name)
     return {"ok": True}
 
 
@@ -476,6 +504,11 @@ def access_logs(source: str = "site", limit: int = 200, q: str = "", status: str
         raise ApiError(400, "Unknown log.")
     return accesslog.read(cfg.access_log_dir, source, limit=limit, query=q, status=status,
                           hide_api=hideApi)
+
+
+@app.get("/api/auth-log")
+def auth_log(limit: int = 200, q: str = "", outcome: str = "") -> dict:
+    return authlog.read(cfg.data_dir, limit=limit, query=q, outcome=outcome)
 
 
 COMMON_SPECIES = (

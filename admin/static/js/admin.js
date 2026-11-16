@@ -612,32 +612,105 @@ function logRow(e) {
   return tr;
 }
 
+const AUTH_EVENTS = {
+  signin: 'Signed in',
+  signin_failed: 'Sign-in failed',
+  signin_throttled: 'Blocked: too many failures',
+  password_disabled: 'Password tried while off',
+  signout: 'Signed out',
+  passkey_added: 'Passkey added',
+  passkey_add_failed: 'Passkey add failed',
+  passkey_renamed: 'Passkey renamed',
+  passkey_removed: 'Passkey removed',
+};
+
+function authRow(e) {
+  const tr = document.createElement('tr');
+  const d = new Date(e.ts);
+  const when = logCell(isNaN(d) ? '' : d.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }), 'when');
+  if (!isNaN(d)) when.title = d.toISOString();
+
+  const ev = document.createElement('td');
+  ev.className = 'event';
+  if (e.ok === true || e.ok === false) {
+    const pill = document.createElement('span');
+    pill.className = `status-pill ${e.ok ? 'ok' : 'fail'}`;
+    pill.textContent = e.ok ? 'OK' : 'FAIL';
+    ev.append(pill);
+  }
+  ev.append(document.createTextNode(AUTH_EVENTS[e.event] || e.event));
+
+  const how = { passkey: 'Passkey', password: 'Password' }[e.method];
+  const detail = logCell([how, e.detail].filter(Boolean).join(' · '), 'detail');
+  const ua = logCell(e.userAgent, 'ua');
+  ua.title = e.userAgent;
+  tr.append(when, logCell(e.ip, 'ip'), ev, detail, ua);
+  return tr;
+}
+
+function showLogSource(source) {
+  const isAuth = source === 'auth';
+  $$('[data-access-only]').forEach((el) => { el.hidden = isAuth; });
+  $$('[data-auth-only]').forEach((el) => { el.hidden = !isAuth; });
+  $('[data-log-title]').textContent = isAuth ? 'Sign-in log' : 'Access logs';
+  $('[data-log-blurb]').textContent = isAuth
+    ? 'Every sign-in to this console, successful or not, plus sign-outs and passkey changes. Newest first.'
+    : 'Every HTTP request to the site and this console, as recorded by the web server (Caddy). Newest first.';
+  $('[data-log-q]').placeholder = isAuth ? 'Filter: IP, event, passkey, browser…'
+    : 'Filter: IP, path, status, browser…';
+}
+
 async function loadLogs() {
   if (logState.loading) return;
   logState.loading = true;
   const f = logFilters.elements;
-  const params = new URLSearchParams({
-    source: logState.source, q: f.q.value, status: f.status.value,
-    limit: f.limit.value, hideApi: String(f.hideApi.checked),
-  });
+  const source = logState.source;
+  const isAuth = source === 'auth';
   try {
-    const data = await api('GET', `/api/logs?${params}`);
+    let data;
+    if (isAuth) {
+      const params = new URLSearchParams({ q: f.q.value, outcome: f.outcome.value, limit: f.limit.value });
+      data = await api('GET', `/api/auth-log?${params}`);
+    } else {
+      const params = new URLSearchParams({
+        source, q: f.q.value, status: f.status.value,
+        limit: f.limit.value, hideApi: String(f.hideApi.checked),
+      });
+      data = await api('GET', `/api/logs?${params}`);
+    }
+    if (logState.source !== source) return;  // switched while loading; that load follows
     $('[data-log-missing]').hidden = data.available;
     $('[data-log-file]').textContent = data.file;
-    $('[data-log-wrap]').hidden = !data.available || !data.entries.length;
+    $('[data-log-wrap]').hidden = isAuth || !data.available || !data.entries.length;
+    $('[data-auth-wrap]').hidden = !isAuth || !data.available || !data.entries.length;
     $('[data-log-empty]').hidden = !data.available || data.entries.length > 0;
-    $('[data-log-rows]').replaceChildren(...data.entries.map(logRow));
+    $(isAuth ? '[data-auth-rows]' : '[data-log-rows]').replaceChildren(
+      ...data.entries.map(isAuth ? authRow : logRow));
     const s = data.summary;
-    $('[data-log-summary]').textContent = data.available && s.requests
-      ? `Showing ${data.entries.length.toLocaleString()} of the last ${s.requests.toLocaleString()} requests`
-        + (s.since ? ` (since ${fmtDate(s.since)})` : '')
-        + ` · ${s.visitors.toLocaleString()} distinct IP${s.visitors === 1 ? '' : 's'}`
-        + ` · ${s.errors.toLocaleString()} error${s.errors === 1 ? '' : 's'} (4xx/5xx)`
-      : '';
+    if (isAuth) {
+      const last = s.lastSignIn;
+      $('[data-log-summary]').textContent = data.available
+        ? `${s.events.toLocaleString()} event${s.events === 1 ? '' : 's'} on file`
+          + (s.since ? ` (since ${fmtDate(s.since)})` : '')
+          + ` · ${s.signIns.toLocaleString()} sign-in${s.signIns === 1 ? '' : 's'}`
+          + ` · ${s.failures.toLocaleString()} failed or blocked`
+          + (s.failures ? ` from ${s.failureIps} IP${s.failureIps === 1 ? '' : 's'}` : '')
+          + (last ? ` · last sign-in ${fmtDate(last.ts)} from ${last.ip || 'unknown'}` : '')
+        : '';
+    } else {
+      $('[data-log-summary]').textContent = data.available && s.requests
+        ? `Showing ${data.entries.length.toLocaleString()} of the last ${s.requests.toLocaleString()} requests`
+          + (s.since ? ` (since ${fmtDate(s.since)})` : '')
+          + ` · ${s.visitors.toLocaleString()} distinct IP${s.visitors === 1 ? '' : 's'}`
+          + ` · ${s.errors.toLocaleString()} error${s.errors === 1 ? '' : 's'} (4xx/5xx)`
+        : '';
+    }
   } catch (err) {
     toast(err.message, true);
   } finally {
     logState.loading = false;
+    if (logState.source !== source) loadLogs();
   }
 }
 
@@ -651,6 +724,8 @@ function setLogAuto(on) {
 $$('[data-log-source]').forEach((b) => b.addEventListener('click', () => {
   logState.source = b.dataset.logSource;
   $$('[data-log-source]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  showLogSource(logState.source);
+  $('[data-log-summary]').textContent = '';
   loadLogs();
 }));
 logFilters.addEventListener('submit', (e) => { e.preventDefault(); loadLogs(); });

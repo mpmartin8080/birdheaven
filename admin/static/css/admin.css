@@ -196,6 +196,11 @@ main.wrap { padding: 24px 0 60px; display: grid; gap: 18px; }
 .status-pill.s3 { background: var(--paper-2); color: var(--ink-2); }
 .status-pill.s4 { background: var(--goldfinch-soft); color: var(--ink); }
 .status-pill.s5 { background: var(--cardinal-soft); color: var(--cardinal); }
+.status-pill.ok { background: var(--robin-soft); color: var(--moss); }
+.status-pill.fail { background: var(--cardinal-soft); color: var(--cardinal); }
+.log-table .event { white-space: nowrap; }
+.log-table .event .status-pill { min-width: 0; margin-right: .5em; }
+.log-table .detail { overflow-wrap: anywhere; min-width: 14em; }
 
 /* ---------- dialogs & toast ---------- */
 dialog { border: 0; border-radius: 16px; padding: 0; width: min(720px, 100% - 24px); max-height: calc(100dvh - 24px); background: var(--card); color: var(--ink); box-shadow: 0 30px 80px -20px rgb(0 0 0 / .5); }

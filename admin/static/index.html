@@ -203,17 +203,18 @@
     <section data-panel="logs" role="tabpanel" hidden>
       <div class="section-head">
         <div>
-          <h1>Access logs</h1>
-          <p class="muted small">Every HTTP request to the site and this console, as recorded by the web server (Caddy). Newest first.</p>
+          <h1 data-log-title>Access logs</h1>
+          <p class="muted small" data-log-blurb>Every HTTP request to the site and this console, as recorded by the web server (Caddy). Newest first.</p>
         </div>
         <div class="segmented" role="group" aria-label="Which log">
           <button type="button" data-log-source="site" aria-pressed="true">Public site</button>
           <button type="button" data-log-source="admin" aria-pressed="false">Admin console</button>
+          <button type="button" data-log-source="auth" aria-pressed="false">Sign-ins</button>
         </div>
       </div>
       <form class="toolbar log-filters" data-log-filters>
-        <input type="text" name="q" placeholder="Filter: IP, path, status, browser…" aria-label="Filter log entries">
-        <select name="status" aria-label="Status">
+        <input type="text" name="q" placeholder="Filter: IP, path, status, browser…" aria-label="Filter log entries" data-log-q>
+        <select name="status" aria-label="Status" data-access-only>
           <option value="">All statuses</option>
           <option value="2xx">2xx OK</option>
           <option value="3xx">3xx Redirect</option>
@@ -226,15 +227,22 @@
           <option value="500">500 rows</option>
           <option value="1000">1000 rows</option>
         </select>
-        <label class="check"><input type="checkbox" name="hideApi"> Hide /api/ calls</label>
+        <select name="outcome" aria-label="Outcome" data-auth-only hidden>
+          <option value="">All events</option>
+          <option value="ok">Successful</option>
+          <option value="fail">Failed or blocked</option>
+        </select>
+        <label class="check" data-access-only><input type="checkbox" name="hideApi"> Hide /api/ calls</label>
         <label class="check"><input type="checkbox" name="auto"> Auto-refresh</label>
         <button class="btn btn-sm" type="submit">Refresh</button>
       </form>
       <p class="muted small" data-log-summary></p>
       <div class="notice info small" data-log-missing hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
-        <p>No log file yet at <code data-log-file></code>. On the droplet Caddy writes it after its first request
+        <p data-access-only>No log file yet at <code data-log-file></code>. On the droplet Caddy writes it after its first request
           once deployed; in local development there is no Caddy, so there are no access logs.</p>
+        <p data-auth-only hidden>No sign-in events recorded yet. They start with the first sign-in after this
+          version was deployed.</p>
       </div>
       <div class="log-wrap" data-log-wrap>
         <table class="log-table">
@@ -244,7 +252,15 @@
           <tbody data-log-rows></tbody>
         </table>
       </div>
-      <p class="empty" data-log-empty hidden>No requests match.</p>
+      <div class="log-wrap" data-auth-wrap hidden>
+        <table class="log-table">
+          <thead>
+            <tr><th>Time</th><th>Client</th><th>Event</th><th>Details</th><th>Browser</th></tr>
+          </thead>
+          <tbody data-auth-rows></tbody>
+        </table>
+      </div>
+      <p class="empty" data-log-empty hidden>Nothing matches.</p>
     </section>
   </main>
 

@@ -227,6 +227,58 @@ def run(tmp: Path) -> None:
           "admin console log is separate")
     check("Cookie" not in json.dumps(c.get("/api/logs?source=site").json()), "request headers are not passed through")
 
+    print("== sign-in log")
+    from birdadmin import auth as auth_mod
+    from birdadmin import authlog
+    auth_mod.clear_failures()
+    c, main_mod = fresh(tmp, ADMIN_PASSWORD_LOGIN="true", ADMIN_PASSWORD_HASH=HASH)
+    authfile = tmp / "data" / authlog.FILE_NAME
+    authfile.unlink(missing_ok=True)
+    check(c.get("/api/auth-log").status_code == 401, "sign-in log requires a session")
+    hdr = {"Origin": "http://testserver", "User-Agent": "TestBrowser/1.0"}
+    c.post("/api/session/password", json={"password": "wrong-password!"}, headers=hdr)
+    c.post("/api/session/password", json={"password": PASSWORD}, headers=hdr)
+    r = c.get("/api/auth-log").json()
+    events = [(e["event"], e["ok"], e["method"]) for e in r["entries"]]
+    check(events == [("signin", True, "password"), ("signin_failed", False, "password")],
+          f"password failure and success recorded, newest first (got {events})")
+    check(r["entries"][1]["userAgent"] == "TestBrowser/1.0" and r["entries"][1]["ip"],
+          "IP and browser recorded")
+    check(PASSWORD not in authfile.read_text(encoding="utf-8")
+          and "wrong-password!" not in authfile.read_text(encoding="utf-8"), "passwords never logged")
+    s = r["summary"]
+    check(s["signIns"] == 1 and s["failures"] == 1 and s["lastSignIn"]["event"] == "signin",
+          "summary: sign-ins, failures, last sign-in")
+    check([e["event"] for e in c.get("/api/auth-log?outcome=fail").json()["entries"]] == ["signin_failed"],
+          "outcome filter")
+    check(len(c.get("/api/auth-log?q=testbrowser").json()["entries"]) == 2, "text filter")
+    c.delete("/api/session", headers=hdr)
+    check(c.get("/api/auth-log").status_code == 401, "signed out")
+    c = signed_in(c, "password")
+    check(c.get("/api/auth-log").json()["entries"][0]["event"] == "signout", "sign-out recorded")
+
+    auth_mod.clear_failures()
+    c2, _ = fresh(tmp)  # switch off
+    c2.post("/api/session/password", json={"password": "x"}, headers=hdr)
+    c2 = signed_in(c2, "passkey")
+    check(c2.get("/api/auth-log").json()["entries"][0]["event"] == "password_disabled",
+          "password attempt while the switch is off recorded")
+    for _ in range(12):
+        auth_mod.record_failure()
+    c2.post("/api/webauthn/login/options", headers=hdr)
+    check(c2.get("/api/auth-log").json()["entries"][0]["event"] == "signin_throttled", "throttled attempt recorded")
+    auth_mod.clear_failures()
+
+    big = '{"event":"signin","ok":true}\n' * 40000  # > 1 MiB
+    authfile.write_text(big, encoding="utf-8")
+    authlog.record(tmp / "data", "signout")
+    check((tmp / "data" / authlog.ROLLED_NAME).is_file() and authfile.stat().st_size < 1000,
+          "rolls over at 1 MiB")
+    check(c2.get("/api/auth-log?limit=5000").json()["summary"]["events"] == 40001,
+          "reads the rolled file too")
+    authfile.unlink()
+    (tmp / "data" / authlog.ROLLED_NAME).unlink()
+
     print("== passkey guard and switch-off")
     from birdadmin import passkeys
     entry = passkeys.add(b"cred-1", b"pk", 0, ["internal"], "Test key")
